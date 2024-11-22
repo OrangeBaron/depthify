@@ -3,34 +3,25 @@ import numpy as np
 import argparse
 
 def create_displaced_image(color_image_path, depthmap_path, levels, eye):
-    # Carica l'immagine a colori
+    # Carica l'immagine a colori e la depthmap
     color_img = Image.open(color_image_path).convert("RGBA")
-    
-    # Carica la depthmap correttamente
-    depth_img = Image.open(depthmap_path)
-    
-    # Verifica se l'immagine depth è in formato a 16 bit o 8 bit
-    if depth_img.mode == "I" or depth_img.mode == "I;16":
-        depth_array = np.array(depth_img, dtype=np.uint16)  # Depthmap a 16 bit
-        depth_max_value = 65535  # Max per depthmap a 16 bit
-    elif depth_img.mode == "L":
-        depth_array = np.array(depth_img, dtype=np.uint8)  # Depthmap a 8 bit
-        depth_max_value = 255  # Max per depthmap a 8 bit
-    else:
-        raise ValueError("Formato depthmap non supportato: deve essere 8 bit o 16 bit")
+    depth_img = Image.open(depthmap_path).convert("L")
+
+    # Convertilo in array numpy per l'elaborazione
+    depth_array = np.array(depth_img)
 
     # Calcola gli step di soglia basati su levels
-    thresholds = [(i * depth_max_value // levels) for i in range(1, levels)]
+    thresholds = [(i * 255 // levels) for i in range(1, levels)]
 
     # Preparazione dell'immagine di output
     output_img = Image.new("RGBA", color_img.size, (0, 0, 0, 0))
 
     # Calcola lo shift globale correttivo
     shift_correction = (levels - 1) // 2
-    base_shift = 1 if eye == "left" else -1  # Shift opposto per l'occhio sinistro/destro
+    base_shift = 1 if eye == "left" else -1  # Inverti direzione dello shift
 
     # Applica lo shift correttivo al livello completo iniziale
-    corrected_layer = ImageChops.offset(color_img, shift_correction * base_shift, 0)
+    corrected_layer = ImageChops.offset(color_img, -shift_correction * base_shift, 0)
     output_img = Image.alpha_composite(output_img, corrected_layer)
 
     # Applica ogni livello successivo con maschera
@@ -43,7 +34,7 @@ def create_displaced_image(color_image_path, depthmap_path, levels, eye):
         layer = Image.composite(color_img, Image.new("RGBA", color_img.size, (0, 0, 0, 0)), mask_img)
 
         # Calcola lo shift per il livello corrente
-        shift_offset = (i - shift_correction) * base_shift  # Correzione applicata per allineare i livelli
+        shift_offset = (i + 1 - shift_correction) * base_shift
         layer = ImageChops.offset(layer, shift_offset, 0)
 
         # Sovrapponi il layer sull'immagine di output
