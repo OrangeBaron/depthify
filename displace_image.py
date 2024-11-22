@@ -2,16 +2,19 @@ from PIL import Image, ImageChops
 import numpy as np
 import argparse
 
-def create_displaced_image(color_img, depth_img, levels, eye):
-    # Converti la depthmap in un array numpy e normalizzalo su 0-255
-    depth_array = np.array(depth_img)
+def create_displaced_image(color_image_path, depthmap_path, levels, eye):
+    # Carica l'immagine a colori
+    color_img = Image.open(color_image_path).convert("RGBA")
     
-    # Se l'immagine è a 16 bit, normalizza il range
-    if depth_array.max() > 255:
-        depth_array = (depth_array / 256).astype(np.uint8)  # Normalizza su 0-255
+    # Carica la depthmap e determina il numero di bit
+    depth_img = Image.open(depthmap_path)
+    depth_array = np.array(depth_img)
 
+    # Controlla se la depthmap è a 8 bit o 16 bit
+    depth_max_value = 255 if depth_img.mode == "L" and depth_array.max() <= 255 else 65535
+    
     # Calcola gli step di soglia basati su levels
-    thresholds = [(i * 255 // levels) for i in range(1, levels)]
+    thresholds = [(i * depth_max_value // levels) for i in range(1, levels)]
 
     # Preparazione dell'immagine di output
     output_img = Image.new("RGBA", color_img.size, (0, 0, 0, 0))
