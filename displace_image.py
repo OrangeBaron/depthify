@@ -20,7 +20,8 @@ def create_displaced_image(color_image_path, depthmap_path, output_path, levels,
     output_img = Image.alpha_composite(output_img, color_img)
 
     # Definisci la direzione dello shift
-    shift = (1, 0) if direction == "right" else (-1, 0)
+    shift_direction = 1 if direction == "right" else -1
+    half_shift = (levels // 2) * shift_direction  # Calcola la correzione
 
     # Applica ogni livello successivo
     for i, threshold in enumerate(thresholds):
@@ -31,8 +32,8 @@ def create_displaced_image(color_image_path, depthmap_path, output_path, levels,
         # Applica la maschera all'immagine a colori
         layer = Image.composite(color_img, Image.new("RGBA", color_img.size, (0, 0, 0, 0)), mask_img)
 
-        # Shift del layer
-        layer = ImageChops.offset(layer, (i + 1) * shift[0], (i + 1) * shift[1])
+        # Shift del layer (compensato per centrare la pila)
+        layer = ImageChops.offset(layer, (i + 1) * shift_direction - half_shift, 0)
 
         # Sovrapponi il layer sull'immagine di output
         output_img = Image.alpha_composite(output_img, layer)
