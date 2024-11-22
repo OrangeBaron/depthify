@@ -1,6 +1,7 @@
 from PIL import Image, ImageChops
 import numpy as np
 import argparse
+import os
 
 def load_depthmap(depthmap_path):
     """
@@ -78,16 +79,36 @@ def create_stereo_image(color_image_path, depthmap_path, output_path, levels):
     # Salva l'immagine risultante
     stereo_image.save(output_path, "PNG")
 
+def process_folder(color_dir, depth_dir, output_dir, levels):
+    # Ottieni la lista di file nell'ordine corretto
+    color_files = sorted([f for f in os.listdir(color_dir) if f.endswith(".jpg")])
+    depth_files = sorted([f for f in os.listdir(depth_dir) if f.endswith(".png")])
+
+    # Assicurati che la cartella di output esista
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Processa ogni file
+    for color_file, depth_file in zip(color_files, depth_files):
+        # Costruisci i percorsi completi
+        color_path = os.path.join(color_dir, color_file)
+        depth_path = os.path.join(depth_dir, depth_file)
+        output_path = os.path.join(output_dir, color_file.replace(".jpg", ".png"))
+
+        print(f"Processing {color_file} and {depth_file} -> {output_path}")
+
+        # Crea l'immagine stereo
+        create_stereo_image(color_path, depth_path, output_path, levels)
+
 if __name__ == "__main__":
     # Parser per gli argomenti da riga di comando
-    parser = argparse.ArgumentParser(description="Crea un'immagine 3D half-width side-by-side stereo.")
-    parser.add_argument("color_image", help="Percorso dell'immagine a colori (RGB).")
-    parser.add_argument("depthmap", help="Percorso della depthmap (in scala di grigi, 8 o 16 bit).")
-    parser.add_argument("output_image", help="Percorso per salvare l'immagine stereo di output.")
+    parser = argparse.ArgumentParser(description="Crea immagini 3D stereo da cartelle di immagini e depthmap.")
+    parser.add_argument("color_dir", help="Cartella contenente le immagini a colori (es. 000001.jpg).")
+    parser.add_argument("depth_dir", help="Cartella contenente le depthmap (es. 000001.png).")
+    parser.add_argument("output_dir", help="Cartella per salvare le immagini stereo.")
     parser.add_argument("--levels", type=int, default=10, help="Numero di livelli (default: 10).")
 
     # Leggi gli argomenti
     args = parser.parse_args()
 
-    # Esegui la funzione per creare l'immagine stereo
-    create_stereo_image(args.color_image, args.depthmap, args.output_image, args.levels)
+    # Processa i file nelle cartelle
+    process_folder(args.color_dir, args.depth_dir, args.output_dir, args.levels)
