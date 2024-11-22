@@ -1,6 +1,8 @@
+import os
 from PIL import Image, ImageChops
 import numpy as np
 import argparse
+import glob
 
 def create_displaced_image(color_image_path, depthmap_path, levels, eye):
     # Carica l'immagine a colori e la depthmap
@@ -18,10 +20,10 @@ def create_displaced_image(color_image_path, depthmap_path, levels, eye):
 
     # Calcola lo shift globale correttivo
     shift_correction = (levels - 1) // 2
-    base_shift = 1 if eye == "left" else -1
+    base_shift = 1 if eye == "left" else -1  # Shift opposto per l'occhio sinistro/destro
 
     # Applica lo shift correttivo al livello completo iniziale
-    corrected_layer = ImageChops.offset(color_img, -shift_correction * base_shift, 0)
+    corrected_layer = ImageChops.offset(color_img, shift_correction * base_shift, 0)
     output_img = Image.alpha_composite(output_img, corrected_layer)
 
     # Applica ogni livello successivo con maschera
@@ -34,7 +36,7 @@ def create_displaced_image(color_image_path, depthmap_path, levels, eye):
         layer = Image.composite(color_img, Image.new("RGBA", color_img.size, (0, 0, 0, 0)), mask_img)
 
         # Calcola lo shift per il livello corrente
-        shift_offset = (i + 1 - shift_correction) * base_shift
+        shift_offset = (i - shift_correction) * base_shift  # Correzione applicata per allineare i livelli
         layer = ImageChops.offset(layer, shift_offset, 0)
 
         # Sovrapponi il layer sull'immagine di output
@@ -62,16 +64,32 @@ def create_stereo_image(color_image_path, depthmap_path, output_path, levels):
     # Salva l'immagine risultante
     stereo_image.save(output_path, "PNG")
 
+def process_images(input_color_dir, input_depthmap_dir, output_dir, levels):
+    # Assicurati che la directory di output esista
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Trova tutte le immagini a colori e depthmap nelle directory
+    color_images = sorted(glob.glob(os.path.join(input_color_dir, "%06d.jpg")))
+    depthmaps = sorted(glob.glob(os.path.join(input_depthmap_dir, "%06d-dpt_beit_large_512.png")))
+
+    # Elenco delle immagini a colori e depthmap corrispondenti
+    for color_image, depthmap in zip(color_images, depthmaps):
+        # Crea il percorso di output con la stessa numerazione
+        output_image = os.path.join(output_dir, os.path.basename(color_image).replace(".jpg", ".png"))
+
+        # Crea e salva l'immagine stereo
+        create_stereo_image(color_image, depthmap, output_image, levels)
+
 if __name__ == "__main__":
     # Parser per gli argomenti da riga di comando
     parser = argparse.ArgumentParser(description="Crea un'immagine 3D half-width side-by-side stereo.")
-    parser.add_argument("color_image", help="Percorso dell'immagine a colori (RGB).")
-    parser.add_argument("depthmap", help="Percorso della depthmap (in scala di grigi).")
-    parser.add_argument("output_image", help="Percorso per salvare l'immagine stereo di output.")
+    parser.add_argument("color_image_dir", help="Directory contenente le immagini a colori (formato %06d.jpg).")
+    parser.add_argument("depthmap_dir", help="Directory contenente le depthmap (formato %06d-dpt_beit_large_512.png).")
+    parser.add_argument("output_dir", help="Directory di output per le immagini stereo.")
     parser.add_argument("--levels", type=int, default=10, help="Numero di livelli (default: 10).")
 
     # Leggi gli argomenti
     args = parser.parse_args()
 
-    # Esegui la funzione per creare l'immagine stereo
-    create_stereo_image(args.color_image, args.depthmap, args.output_image, args.levels)
+    # Elabora tutte le immagini nella directory
+    process_images(args.color_image_dir, args.depthmap_dir, args.output_dir, args.levels)
