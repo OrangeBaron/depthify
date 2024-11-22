@@ -1,14 +1,9 @@
-import os
 from PIL import Image, ImageChops
 import numpy as np
+import os
 import argparse
-import glob
 
-def create_displaced_image(color_image_path, depthmap_path, levels, eye):
-    # Carica l'immagine a colori e la depthmap
-    color_img = Image.open(color_image_path).convert("RGBA")
-    depth_img = Image.open(depthmap_path).convert("L")
-
+def create_displaced_image(color_img, depth_img, levels, eye):
     # Convertilo in array numpy per l'elaborazione
     depth_array = np.array(depth_img)
 
@@ -44,12 +39,12 @@ def create_displaced_image(color_image_path, depthmap_path, levels, eye):
 
     return output_img
 
-def create_stereo_image(color_image_path, depthmap_path, output_path, levels):
+def create_stereo_image(color_image, depthmap_image, levels):
     # Genera l'immagine per l'occhio sinistro
-    left_image = create_displaced_image(color_image_path, depthmap_path, levels, "left")
+    left_image = create_displaced_image(color_image, depthmap_image, levels, "left")
 
     # Genera l'immagine per l'occhio destro
-    right_image = create_displaced_image(color_image_path, depthmap_path, levels, "right")
+    right_image = create_displaced_image(color_image, depthmap_image, levels, "right")
 
     # Ridimensiona entrambe le immagini a metà larghezza
     half_width = left_image.width // 2
@@ -61,35 +56,47 @@ def create_stereo_image(color_image_path, depthmap_path, output_path, levels):
     stereo_image.paste(left_resized, (0, 0))
     stereo_image.paste(right_resized, (half_width, 0))
 
-    # Salva l'immagine risultante
-    stereo_image.save(output_path, "PNG")
+    return stereo_image
 
-def process_images(input_color_dir, input_depthmap_dir, output_dir, levels):
-    # Assicurati che la directory di output esista
-    os.makedirs(output_dir, exist_ok=True)
+def process_images(color_folder, depth_folder, output_folder, levels):
+    # Ottieni tutti i file dalle cartelle
+    color_files = sorted(os.listdir(color_folder))
+    depth_files = sorted(os.listdir(depth_folder))
 
-    # Trova tutte le immagini a colori e depthmap nelle directory
-    color_images = sorted(glob.glob(os.path.join(input_color_dir, "%06d.jpg")))
-    depthmaps = sorted(glob.glob(os.path.join(input_depthmap_dir, "%06d-dpt_beit_large_512.png")))
+    # Assicurati che le cartelle contengano lo stesso numero di immagini
+    if len(color_files) != len(depth_files):
+        raise ValueError("Il numero di immagini nelle cartelle delle immagini e delle depthmap non corrisponde.")
 
-    # Elenco delle immagini a colori e depthmap corrispondenti
-    for color_image, depthmap in zip(color_images, depthmaps):
-        # Crea il percorso di output con la stessa numerazione
-        output_image = os.path.join(output_dir, os.path.basename(color_image).replace(".jpg", ".png"))
+    # Elabora ogni coppia di immagini
+    for idx, (color_file, depth_file) in enumerate(zip(color_files, depth_files)):
+        # Crea il percorso completo per ogni file
+        color_img_path = os.path.join(color_folder, color_file)
+        depth_img_path = os.path.join(depth_folder, depth_file)
 
-        # Crea e salva l'immagine stereo
-        create_stereo_image(color_image, depthmap, output_image, levels)
+        # Carica l'immagine a colori e la depthmap
+        color_img = Image.open(color_img_path).convert("RGBA")
+        depth_img = Image.open(depth_img_path).convert("L")
+
+        # Crea l'immagine stereo
+        stereo_image = create_stereo_image(color_img, depth_img, levels)
+
+        # Definisci il percorso di salvataggio con il nome in formato numerico
+        output_path = os.path.join(output_folder, f"{idx:06d}.png")
+
+        # Salva l'immagine stereo
+        stereo_image.save(output_path, "PNG")
+        print(f"Salvato {output_path}")
 
 if __name__ == "__main__":
     # Parser per gli argomenti da riga di comando
-    parser = argparse.ArgumentParser(description="Crea un'immagine 3D half-width side-by-side stereo.")
-    parser.add_argument("color_image_dir", help="Directory contenente le immagini a colori (formato %06d.jpg).")
-    parser.add_argument("depthmap_dir", help="Directory contenente le depthmap (formato %06d-dpt_beit_large_512.png).")
-    parser.add_argument("output_dir", help="Directory di output per le immagini stereo.")
+    parser = argparse.ArgumentParser(description="Crea immagini 3D side-by-side stereo a partire da cartelle di immagini e depthmap.")
+    parser.add_argument("color_folder", help="Cartella contenente le immagini a colori (RGB).")
+    parser.add_argument("depth_folder", help="Cartella contenente le depthmap (in scala di grigi).")
+    parser.add_argument("output_folder", help="Cartella per salvare le immagini stereo di output.")
     parser.add_argument("--levels", type=int, default=10, help="Numero di livelli (default: 10).")
 
     # Leggi gli argomenti
     args = parser.parse_args()
 
-    # Elabora tutte le immagini nella directory
-    process_images(args.color_image_dir, args.depthmap_dir, args.output_dir, args.levels)
+    # Esegui la funzione per elaborare le immagini
+    process_images(args.color_folder, args.depth_folder, args.output_folder, args.levels)
