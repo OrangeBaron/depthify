@@ -1,35 +1,38 @@
 from PIL import Image, ImageChops
 import numpy as np
+import argparse
 
-def create_displaced_image(color_image_path, depthmap_path, output_path, N, direction):
+def create_displaced_image(color_image_path, depthmap_path, output_path, levels, direction):
     # Carica l'immagine a colori e la depthmap
     color_img = Image.open(color_image_path).convert("RGBA")
     depth_img = Image.open(depthmap_path).convert("L")
 
     # Convertilo in array numpy per l'elaborazione
-    color_array = np.array(color_img)
     depth_array = np.array(depth_img)
 
-    # Calcola gli step di soglia basati su N
-    thresholds = [(i * 255 // N) for i in range(N)]
+    # Calcola gli step di soglia basati su levels
+    thresholds = [(i * 255 // levels) for i in range(1, levels)]
 
     # Preparazione dell'immagine di output
     output_img = Image.new("RGBA", color_img.size, (0, 0, 0, 0))
 
+    # Aggiungi il livello completo (senza maschera) come primo livello
+    output_img = Image.alpha_composite(output_img, color_img)
+
     # Definisci la direzione dello shift
     shift = (1, 0) if direction == "right" else (-1, 0)
 
-    # Applica ogni livello
+    # Applica ogni livello successivo
     for i, threshold in enumerate(thresholds):
         # Crea una maschera basata sulla depthmap
-        mask = (depth_array >= threshold).astype(np.uint8) * 255
+        mask = (depth_array > threshold).astype(np.uint8) * 255
         mask_img = Image.fromarray(mask, mode="L")
 
         # Applica la maschera all'immagine a colori
         layer = Image.composite(color_img, Image.new("RGBA", color_img.size, (0, 0, 0, 0)), mask_img)
 
         # Shift del layer
-        layer = ImageChops.offset(layer, i * shift[0], i * shift[1])
+        layer = ImageChops.offset(layer, (i + 1) * shift[0], (i + 1) * shift[1])
 
         # Sovrapponi il layer sull'immagine di output
         output_img = Image.alpha_composite(output_img, layer)
@@ -38,12 +41,16 @@ def create_displaced_image(color_image_path, depthmap_path, output_path, N, dire
     output_img.save(output_path, "PNG")
 
 if __name__ == "__main__":
-    # Parametri dello script
-    color_image_path = "rgb_000000.jpg"  # Percorso dell'immagine a colori
-    depthmap_path = "depth_000000.jpg"  # Percorso della depthmap
-    output_path = "displaced_000000.png"  # Percorso di output
-    N = 10  # Numero di livelli
-    direction = "right"  # Direzione dello shift, "right" o "left"
+    # Parser per gli argomenti da riga di comando
+    parser = argparse.ArgumentParser(description="Crea un'immagine composita basata su depthmap.")
+    parser.add_argument("color_image", help="Percorso dell'immagine a colori (RGB).")
+    parser.add_argument("depthmap", help="Percorso della depthmap (in scala di grigi).")
+    parser.add_argument("output_image", help="Percorso per salvare l'immagine di output.")
+    parser.add_argument("--levels", type=int, default=10, help="Numero di livelli (default: 10).")
+    parser.add_argument("--direction", choices=["left", "right"], default="right", help="Direzione dello shift (default: right).")
+
+    # Leggi gli argomenti
+    args = parser.parse_args()
 
     # Esegui la funzione
-    create_displaced_image(color_image_path, depthmap_path, output_path, N, direction)
+    create_displaced_image(args.color_image, args.depthmap, args.output_image, args.levels, args.direction)
