@@ -4,8 +4,12 @@ import os
 import argparse
 
 def create_displaced_image(color_img, depth_img, levels, eye):
-    # Convertilo in array numpy per l'elaborazione
+    # Converti la depthmap in un array numpy e normalizzalo su 0-255
     depth_array = np.array(depth_img)
+    
+    # Se l'immagine è a 16 bit, normalizza il range
+    if depth_array.max() > 255:
+        depth_array = (depth_array / 256).astype(np.uint8)  # Normalizza su 0-255
 
     # Calcola gli step di soglia basati su levels
     thresholds = [(i * 255 // levels) for i in range(1, levels)]
@@ -73,9 +77,13 @@ def process_images(color_folder, depth_folder, output_folder, levels):
         color_img_path = os.path.join(color_folder, color_file)
         depth_img_path = os.path.join(depth_folder, depth_file)
 
-        # Carica l'immagine a colori e la depthmap
+        # Carica l'immagine a colori e la depthmap (16 bit gestita)
         color_img = Image.open(color_img_path).convert("RGBA")
-        depth_img = Image.open(depth_img_path).convert("L")
+        depth_img = Image.open(depth_img_path)
+
+        # Se la depthmap è a 16 bit, usa il formato "I" e normalizza
+        if depth_img.mode != "I":
+            depth_img = depth_img.convert("I")  # "I" è il formato per immagini a 32 bit intero (gestisce 16 bit)
 
         # Crea l'immagine stereo
         stereo_image = create_stereo_image(color_img, depth_img, levels)
