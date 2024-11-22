@@ -2,7 +2,7 @@ from PIL import Image, ImageChops
 import numpy as np
 import argparse
 
-def create_displaced_image(color_image_path, depthmap_path, output_path, levels, direction):
+def create_displaced_image(color_image_path, depthmap_path, levels, eye):
     # Carica l'immagine a colori e la depthmap
     color_img = Image.open(color_image_path).convert("RGBA")
     depth_img = Image.open(depthmap_path).convert("L")
@@ -18,7 +18,7 @@ def create_displaced_image(color_image_path, depthmap_path, output_path, levels,
 
     # Calcola lo shift globale correttivo
     shift_correction = (levels - 1) // 2
-    base_shift = 1 if direction == "right" else -1
+    base_shift = -1 if eye == "left" else 1  # Inverti direzione dello shift
 
     # Applica lo shift correttivo al livello completo iniziale
     corrected_layer = ImageChops.offset(color_img, -shift_correction * base_shift, 0)
@@ -40,20 +40,38 @@ def create_displaced_image(color_image_path, depthmap_path, output_path, levels,
         # Sovrapponi il layer sull'immagine di output
         output_img = Image.alpha_composite(output_img, layer)
 
+    return output_img
+
+def create_stereo_image(color_image_path, depthmap_path, output_path, levels):
+    # Genera l'immagine per l'occhio sinistro
+    left_image = create_displaced_image(color_image_path, depthmap_path, levels, "left")
+
+    # Genera l'immagine per l'occhio destro
+    right_image = create_displaced_image(color_image_path, depthmap_path, levels, "right")
+
+    # Ridimensiona entrambe le immagini a metà larghezza
+    half_width = left_image.width // 2
+    left_resized = left_image.resize((half_width, left_image.height), Image.LANCZOS)
+    right_resized = right_image.resize((half_width, right_image.height), Image.LANCZOS)
+
+    # Creazione dell'immagine stereo side-by-side
+    stereo_image = Image.new("RGBA", (left_image.width, left_image.height))
+    stereo_image.paste(left_resized, (0, 0))
+    stereo_image.paste(right_resized, (half_width, 0))
+
     # Salva l'immagine risultante
-    output_img.save(output_path, "PNG")
+    stereo_image.save(output_path, "PNG")
 
 if __name__ == "__main__":
     # Parser per gli argomenti da riga di comando
-    parser = argparse.ArgumentParser(description="Crea un'immagine composita basata su depthmap.")
+    parser = argparse.ArgumentParser(description="Crea un'immagine 3D half-width side-by-side stereo.")
     parser.add_argument("color_image", help="Percorso dell'immagine a colori (RGB).")
     parser.add_argument("depthmap", help="Percorso della depthmap (in scala di grigi).")
-    parser.add_argument("output_image", help="Percorso per salvare l'immagine di output.")
+    parser.add_argument("output_image", help="Percorso per salvare l'immagine stereo di output.")
     parser.add_argument("--levels", type=int, default=10, help="Numero di livelli (default: 10).")
-    parser.add_argument("--direction", choices=["left", "right"], default="right", help="Direzione dello shift (default: right).")
 
     # Leggi gli argomenti
     args = parser.parse_args()
 
-    # Esegui la funzione
-    create_displaced_image(args.color_image, args.depthmap, args.output_image, args.levels, args.direction)
+    # Esegui la funzione per creare l'immagine stereo
+    create_stereo_image(args.color_image, args.depthmap, args.output_image, args.levels)
