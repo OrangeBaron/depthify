@@ -6,13 +6,19 @@ def create_displaced_image(color_image_path, depthmap_path, levels, eye):
     # Carica l'immagine a colori
     color_img = Image.open(color_image_path).convert("RGBA")
     
-    # Carica la depthmap e determina il numero di bit
+    # Carica la depthmap correttamente
     depth_img = Image.open(depthmap_path)
-    depth_array = np.array(depth_img)
-
-    # Controlla se la depthmap è a 8 bit o 16 bit
-    depth_max_value = 255 if depth_img.mode == "L" and depth_array.max() <= 255 else 65535
     
+    # Verifica se l'immagine depth è in formato a 16 bit o 8 bit
+    if depth_img.mode == "I" or depth_img.mode == "I;16":
+        depth_array = np.array(depth_img, dtype=np.uint16)  # Depthmap a 16 bit
+        depth_max_value = 65535  # Max per depthmap a 16 bit
+    elif depth_img.mode == "L":
+        depth_array = np.array(depth_img, dtype=np.uint8)  # Depthmap a 8 bit
+        depth_max_value = 255  # Max per depthmap a 8 bit
+    else:
+        raise ValueError("Formato depthmap non supportato: deve essere 8 bit o 16 bit")
+
     # Calcola gli step di soglia basati su levels
     thresholds = [(i * depth_max_value // levels) for i in range(1, levels)]
 
