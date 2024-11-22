@@ -16,15 +16,15 @@ def create_displaced_image(color_image_path, depthmap_path, output_path, levels,
     # Preparazione dell'immagine di output
     output_img = Image.new("RGBA", color_img.size, (0, 0, 0, 0))
 
-    # Definisci la direzione dello shift
-    shift_direction = 1 if direction == "right" else -1
-    half_shift = (levels // 2) * shift_direction  # Calcola la correzione
+    # Calcola lo shift globale correttivo
+    shift_correction = (levels - 1) // 2
+    base_shift = 1 if direction == "right" else -1
 
-    # Shift e aggiungi il livello completo (senza maschera)
-    base_layer = ImageChops.offset(color_img, -half_shift, 0)
-    output_img = Image.alpha_composite(output_img, base_layer)
+    # Applica lo shift correttivo al livello completo iniziale
+    corrected_layer = ImageChops.offset(color_img, -shift_correction * base_shift, 0)
+    output_img = Image.alpha_composite(output_img, corrected_layer)
 
-    # Applica ogni livello successivo
+    # Applica ogni livello successivo con maschera
     for i, threshold in enumerate(thresholds):
         # Crea una maschera basata sulla depthmap
         mask = (depth_array > threshold).astype(np.uint8) * 255
@@ -33,8 +33,9 @@ def create_displaced_image(color_image_path, depthmap_path, output_path, levels,
         # Applica la maschera all'immagine a colori
         layer = Image.composite(color_img, Image.new("RGBA", color_img.size, (0, 0, 0, 0)), mask_img)
 
-        # Shift del layer (compensato per centrare la pila)
-        layer = ImageChops.offset(layer, (i + 1) * shift_direction - half_shift, 0)
+        # Calcola lo shift per il livello corrente
+        shift_offset = (i + 1 - shift_correction) * base_shift
+        layer = ImageChops.offset(layer, shift_offset, 0)
 
         # Sovrapponi il layer sull'immagine di output
         output_img = Image.alpha_composite(output_img, layer)
