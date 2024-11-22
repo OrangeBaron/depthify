@@ -22,7 +22,7 @@ def create_displaced_image(color_image_path, depthmap_path, output_path, N, dire
     # Applica ogni livello
     for i, threshold in enumerate(thresholds):
         # Crea una maschera basata sulla depthmap
-        mask = (depth_array > threshold).astype(np.uint8) * 255
+        mask = (depth_array >= threshold).astype(np.uint8) * 255
         mask_img = Image.fromarray(mask, mode="L")
 
         # Applica la maschera all'immagine a colori
