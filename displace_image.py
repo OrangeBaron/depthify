@@ -2,6 +2,7 @@ from PIL import Image, ImageChops
 import numpy as np
 import argparse
 import os
+import time
 
 def load_depthmap(depthmap_path):
     """
@@ -20,6 +21,18 @@ def load_depthmap(depthmap_path):
     
     return depth_array
 
+def calculate_thresholds(levels):
+    """
+    Calcola le soglie per ciascun livello in base al numero di livelli.
+
+    Parameters:
+        levels (int): Numero di livelli.
+
+    Returns:
+        list[int]: Lista di soglie (valori di luminanza) per ciascun livello.
+    """
+    return [(i * 255 // levels) for i in range(levels)]
+
 def create_displaced_image(color_image_path, depthmap_path, levels, eye, factor):
     # Carica l'immagine a colori
     color_img = Image.open(color_image_path).convert("RGBA")
@@ -28,7 +41,7 @@ def create_displaced_image(color_image_path, depthmap_path, levels, eye, factor)
     depth_array = load_depthmap(depthmap_path)
 
     # Calcola gli step di soglia basati su levels
-    thresholds = [(i * 255 // levels) for i in range(levels)]
+    thresholds = calculate_thresholds(levels)
 
     # Preparazione dell'immagine di output
     output_img = Image.new("RGBA", color_img.size, (0, 0, 0, 0))
@@ -83,14 +96,46 @@ def process_folder(color_dir, depth_dir, output_dir, levels, factor):
     # Assicurati che la cartella di output esista
     os.makedirs(output_dir, exist_ok=True)
 
+    # Calcola il numero totale di immagini
+    num_images = len(color_files)
+    if num_images == 0:
+        print("No images found in the input directories.")
+        return
+
+    # Inizializza il timer
+    start_time = time.time()
+
     # Processa ogni file
-    for color_file, depth_file in zip(color_files, depth_files):
+    for index, (color_file, depth_file) in enumerate(zip(color_files, depth_files)):
         # Costruisci i percorsi completi
         color_path = os.path.join(color_dir, color_file)
         depth_path = os.path.join(depth_dir, depth_file)
         output_path = os.path.join(output_dir, color_file.replace(".jpg", ".png"))
 
-        print(f"Processing {color_file} and {depth_file} -> {output_path}")
+        print(f"Processing {index + 1}/{num_images}: {color_file} and {depth_file} -> {output_path}")
+
+        # Stima del tempo rimanente
+        elapsed_time = time.time() - start_time
+        images_processed = index + 1
+        images_remaining = num_images - images_processed
+        avg_time_per_image = elapsed_time / images_processed if images_processed > 0 else 0
+        estimated_time_remaining = avg_time_per_image * images_remaining
+
+        if elapsed_time < 60:
+            elapsed_time_str = "{:.0f}s".format(elapsed_time)
+        elif elapsed_time < 3600:
+            elapsed_time_str = "{:.0f}m".format(elapsed_time / 60)
+        else:
+            elapsed_time_str = "{:.0f}h".format(elapsed_time / 3600)
+
+        if estimated_time_remaining < 60:
+            time_remaining_str = "{:.0f}s".format(estimated_time_remaining)
+        elif estimated_time_remaining < 3600:
+            time_remaining_str = "{:.0f}m".format(estimated_time_remaining / 60)
+        else:
+            time_remaining_str = "{:.0f}h".format(estimated_time_remaining / 3600)
+
+        print(f"    Time elapsed: {elapsed_time_str} | Estimated time remaining: {time_remaining_str}")
 
         # Crea l'immagine stereo
         create_stereo_image(color_path, depth_path, output_path, levels, factor)
