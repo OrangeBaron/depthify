@@ -20,7 +20,7 @@ def load_depthmap(depthmap_path):
     
     return depth_array
 
-def create_displaced_image(color_image_path, depthmap_path, levels, eye):
+def create_displaced_image(color_image_path, depthmap_path, levels, eye, factor):
     # Carica l'immagine a colori
     color_img = Image.open(color_image_path).convert("RGBA")
 
@@ -34,7 +34,7 @@ def create_displaced_image(color_image_path, depthmap_path, levels, eye):
     output_img = Image.new("RGBA", color_img.size, (0, 0, 0, 0))
 
     # Calcola lo shift globale correttivo
-    shift_correction = (levels - 1) // 2
+    shift_correction = (levels - 1) // 2 * factor
     base_shift = 1 if eye == "left" else -1  # Correzione dello shift base
 
     # Applica lo shift correttivo al livello completo iniziale
@@ -51,7 +51,7 @@ def create_displaced_image(color_image_path, depthmap_path, levels, eye):
         layer = Image.composite(color_img, Image.new("RGBA", color_img.size, (0, 0, 0, 0)), mask_img)
 
         # Calcola lo shift per il livello corrente
-        shift_offset = (i + 1 - shift_correction) * base_shift
+        shift_offset = (i + 1 - shift_correction) * base_shift * factor
         layer = ImageChops.offset(layer, shift_offset, 0)
 
         # Sovrapponi il layer sull'immagine di output
@@ -59,12 +59,12 @@ def create_displaced_image(color_image_path, depthmap_path, levels, eye):
 
     return output_img
 
-def create_stereo_image(color_image_path, depthmap_path, output_path, levels):
+def create_stereo_image(color_image_path, depthmap_path, output_path, levels, factor):
     # Genera l'immagine per l'occhio sinistro
-    left_image = create_displaced_image(color_image_path, depthmap_path, levels, "left")
+    left_image = create_displaced_image(color_image_path, depthmap_path, levels, "left", factor)
 
     # Genera l'immagine per l'occhio destro
-    right_image = create_displaced_image(color_image_path, depthmap_path, levels, "right")
+    right_image = create_displaced_image(color_image_path, depthmap_path, levels, "right", factor)
 
     # Ridimensiona entrambe le immagini a metà larghezza
     half_width = left_image.width // 2
@@ -79,7 +79,7 @@ def create_stereo_image(color_image_path, depthmap_path, output_path, levels):
     # Salva l'immagine risultante
     stereo_image.save(output_path, "PNG")
 
-def process_folder(color_dir, depth_dir, output_dir, levels):
+def process_folder(color_dir, depth_dir, output_dir, levels, factor):
     # Ottieni la lista di file nell'ordine corretto
     color_files = sorted([f for f in os.listdir(color_dir) if f.endswith(".jpg")])
     depth_files = sorted([f for f in os.listdir(depth_dir) if f.endswith(".png")])
@@ -97,7 +97,7 @@ def process_folder(color_dir, depth_dir, output_dir, levels):
         print(f"Processing {color_file} and {depth_file} -> {output_path}")
 
         # Crea l'immagine stereo
-        create_stereo_image(color_path, depth_path, output_path, levels)
+        create_stereo_image(color_path, depth_path, output_path, levels, factor)
 
 if __name__ == "__main__":
     # Parser per gli argomenti da riga di comando
@@ -106,9 +106,10 @@ if __name__ == "__main__":
     parser.add_argument("depth_dir", help="Cartella contenente le depthmap (es. 000001.png).")
     parser.add_argument("output_dir", help="Cartella per salvare le immagini stereo.")
     parser.add_argument("--levels", type=int, default=10, help="Numero di livelli (default: 10).")
+    parser.add_argument("--factor", type=int, default=1, help="Fattore di amplificazione dello shift (default: 1).")
 
     # Leggi gli argomenti
     args = parser.parse_args()
 
     # Processa i file nelle cartelle
-    process_folder(args.color_dir, args.depth_dir, args.output_dir, args.levels)
+    process_folder(args.color_dir, args.depth_dir, args.output_dir, args.levels, args.factor)
