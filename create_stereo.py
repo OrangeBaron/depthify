@@ -58,7 +58,7 @@ def create_stereoscopic_frames(rgb_folder, depth_folder, output_folder, displace
         stereoscopic_frame = np.hstack((left_image, right_image))
 
         # Save the output frame
-        output_path = os.path.join(output_folder, f"frame_{i + 1:06d}.png")
+        output_path = os.path.join(output_folder, f"{i + 1:06d}.png")
         cv2.imwrite(output_path, stereoscopic_frame)
         print(f"Saved: {output_path}")
 
@@ -67,11 +67,16 @@ def create_stereoscopic_frames(rgb_folder, depth_folder, output_folder, displace
         avg_time_per_frame = elapsed_time / (i + 1)
         remaining_time = avg_time_per_frame * (total_files - (i + 1))
         if remaining_time >= 3600:
-            time_remaining_str = f"{remaining_time / 3600:.2f} hours"
+            hours = int(remaining_time // 3600)
+            minutes = int((remaining_time % 3600) // 60)
+            time_remaining_str = f"{hours} hours and {minutes} minutes"
         elif remaining_time >= 60:
-            time_remaining_str = f"{remaining_time / 60:.2f} minutes"
+            minutes = int(remaining_time // 60)
+            seconds = int(remaining_time % 60)
+            time_remaining_str = f"{minutes} minutes and {seconds} seconds"
         else:
-            time_remaining_str = f"{remaining_time:.2f} seconds"
+            seconds = int(remaining_time)
+            time_remaining_str = f"{seconds} seconds"
         print(f"Estimated time remaining: {time_remaining_str}")
 
 if __name__ == "__main__":
