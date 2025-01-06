@@ -4,12 +4,11 @@ import numpy as np
 import argparse
 import time
 
-def inpaint_missing_regions(image, mask, shift_direction):
+def inpaint_missing_regions(image, mask):
     """
     Perform inpainting to fill missing regions (holes) in the image.
     """
-    kernel = np.ones((1, shift_direction), np.uint8)  # Kernel for dilation in the shift direction
-    dilated_mask = cv2.dilate(mask.astype(np.uint8) * 255, kernel, iterations=1)
+    dilated_mask = cv2.dilate(mask.astype(np.uint8) * 255, np.ones((3, 3), np.uint8), iterations=1)
     inpainted = cv2.inpaint(image, dilated_mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
     return inpainted
 
@@ -69,8 +68,10 @@ def create_stereoscopic_frames(rgb_folder, depth_folder, output_folder, displace
         right_holes = np.all(right_image == 0, axis=2)
 
         # Inpaint missing regions to fill gaps
-        left_image = inpaint_missing_regions(left_image, left_holes, shift_direction=1)
-        right_image = inpaint_missing_regions(right_image, right_holes, shift_direction=-1)
+        if np.any(left_holes):
+            left_image = inpaint_missing_regions(left_image, left_holes)
+        if np.any(right_holes):
+            right_image = inpaint_missing_regions(right_image, right_holes)
 
         # Combine left and right images side-by-side
         stereoscopic_frame = np.hstack((left_image, right_image))
