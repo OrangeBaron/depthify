@@ -59,7 +59,7 @@ def inpaint_horizontal(frame, direction):
 
     return frame
 
-def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
+def process_frames(rgb_dir, depth_dir, output_dir, layers, factor, deflicker):
     """Process all frames to create stereoscopic video."""
     rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
     depth_files = sorted([f for f in os.listdir(depth_dir) if f.endswith('.png') or f.endswith('.jpg')])
@@ -69,9 +69,15 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     os.makedirs(output_dir, exist_ok=True)
 
     for idx, (rgb_file, depth_file) in enumerate(tqdm(zip(rgb_files, depth_files), total=len(rgb_files), desc="Processing frames")):
-        # Load RGB frame and depth map
+        # Load RGB frame
         rgb_frame = cv2.imread(os.path.join(rgb_dir, rgb_file))
+
+        # Load depth maps and apply deflicker if enabled
         depth_map = cv2.imread(os.path.join(depth_dir, depth_file), cv2.IMREAD_UNCHANGED)
+        if deflicker:
+            prev_depth_map = cv2.imread(os.path.join(depth_dir, depth_files[idx - 1]), cv2.IMREAD_UNCHANGED) if idx > 0 else depth_map
+            next_depth_map = cv2.imread(os.path.join(depth_dir, depth_files[idx + 1]), cv2.IMREAD_UNCHANGED) if idx < len(depth_files) - 1 else depth_map
+            depth_map = np.mean([prev_depth_map, depth_map, next_depth_map], axis=0).astype(depth_map.dtype)
 
         # Create parallax frames for left and right eyes
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
@@ -95,7 +101,8 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output frames.")
     parser.add_argument("--layers", type=int, default=10, help="Number of parallax layers.")
     parser.add_argument("--factor", type=int, default=3, help="Parallax shift factor.")
+    parser.add_argument("--deflicker", action='store_true', help="Apply deflicker by averaging depth maps with adjacent frames.")
 
     args = parser.parse_args()
 
-    process_frames(args.rgb_dir, args.depth_dir, args.output_dir, args.layers, args.factor)
+    process_frames(args.rgb_dir, args.depth_dir, args.output_dir, args.layers, args.factor, args.deflicker)
