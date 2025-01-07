@@ -32,8 +32,8 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
             layer = np.roll(layer, shift, axis=1)
             layer[:, shift:] = 0
 
-        # Accumulate the shifted layer into the parallax frame
-        parallax_frame = cv2.add(parallax_frame, layer)
+        # Overlay the shifted layer into the parallax frame (overwrite where mask is True)
+        parallax_frame[mask] = layer[mask]
 
     return parallax_frame
 
