@@ -9,14 +9,8 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
     height, width, _ = rgb_frame.shape
 
     # Normalize depth map to range [0.0, 1.0]
-    if depth_map.dtype == np.uint8:
-        depth_map_normalized = depth_map.astype(np.float32) / 255.0
-    elif depth_map.dtype == np.uint16:
-        depth_map_normalized = depth_map.astype(np.float32) / 65535.0
-    else:
-        raise ValueError("Unsupported depth map format. Expected 8-bit or 16-bit images.")
+    depth_map_normalized = cv2.normalize(depth_map.astype(np.float32), None, 0.0, 1.0, cv2.NORM_MINMAX)
 
-    # Create an empty parallax frame
     parallax_frame = np.zeros_like(rgb_frame, dtype=np.uint8)
 
     for i in range(layers):
@@ -38,25 +32,36 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
             layer = np.roll(layer, shift, axis=1)
             layer[:, shift:] = 0
 
-        # Overlay the shifted layer into the parallax frame
-        parallax_frame[mask] = layer[mask]
+        # Overlay the layer on the parallax frame, ensuring upper layers cover lower layers
+        overlay_mask = np.any(layer != 0, axis=2)
+        parallax_frame[overlay_mask] = layer[overlay_mask]
 
     return parallax_frame
 
 def inpaint_horizontal(frame, direction):
-    """Inpaint missing areas in the frame horizontally using NumPy."""
+    """Inpaint missing areas in the frame horizontally.
+    Args:
+        frame: The frame with missing areas (holes).
+        direction: Direction of inpainting ('left' or 'right').
+    Returns:
+        Inpainted frame.
+    """
     mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
 
     if direction == 'left':
-        for x in range(1, frame.shape[1]):
-            frame[:, x][mask[:, x]] = frame[:, x - 1][mask[:, x]]
+        for y in range(frame.shape[0]):
+            for x in range(1, frame.shape[1]):
+                if mask[y, x]:
+                    frame[y, x] = frame[y, x - 1]  # Fill from the left
     elif direction == 'right':
-        for x in range(frame.shape[1] - 2, -1, -1):
-            frame[:, x][mask[:, x]] = frame[:, x + 1][mask[:, x]]
+        for y in range(frame.shape[0]):
+            for x in range(frame.shape[1] - 2, -1, -1):
+                if mask[y, x]:
+                    frame[y, x] = frame[y, x + 1]  # Fill from the right
 
     return frame
 
-def process_frames(rgb_dir, depth_dir, output_dir, layers, factor, deflicker):
+def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     """Process all frames to create stereoscopic video."""
     rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
     depth_files = sorted([f for f in os.listdir(depth_dir) if f.endswith('.png') or f.endswith('.jpg')])
@@ -66,15 +71,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor, deflicker):
     os.makedirs(output_dir, exist_ok=True)
 
     for idx, (rgb_file, depth_file) in enumerate(tqdm(zip(rgb_files, depth_files), total=len(rgb_files), desc="Processing frames")):
-        # Load RGB frame
+        # Load RGB frame and depth map
         rgb_frame = cv2.imread(os.path.join(rgb_dir, rgb_file))
-
-        # Load depth maps and apply deflicker if enabled
         depth_map = cv2.imread(os.path.join(depth_dir, depth_file), cv2.IMREAD_UNCHANGED)
-        if deflicker:
-            prev_depth_map = cv2.imread(os.path.join(depth_dir, depth_files[idx - 1]), cv2.IMREAD_UNCHANGED) if idx > 0 else depth_map
-            next_depth_map = cv2.imread(os.path.join(depth_dir, depth_files[idx + 1]), cv2.IMREAD_UNCHANGED) if idx < len(depth_files) - 1 else depth_map
-            depth_map = np.mean([prev_depth_map, depth_map, next_depth_map], axis=0).astype(depth_map.dtype)
 
         # Create parallax frames for left and right eyes
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
@@ -98,8 +97,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output frames.")
     parser.add_argument("--layers", type=int, default=10, help="Number of parallax layers.")
     parser.add_argument("--factor", type=int, default=3, help="Parallax shift factor.")
-    parser.add_argument("--deflicker", action='store_true', help="Apply deflicker by averaging depth maps with adjacent frames.")
 
     args = parser.parse_args()
 
-    process_frames(args.rgb_dir, args.depth_dir, args.output_dir, args.layers, args.factor, args.deflicker)
+    process_frames(args.rgb_dir, args.depth_dir, args.output_dir, args.layers, args.factor)
