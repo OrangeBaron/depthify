@@ -9,9 +9,14 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
     height, width, _ = rgb_frame.shape
 
     # Normalize depth map to range [0.0, 1.0]
-    depth_map_normalized = cv2.normalize(depth_map.astype(np.float32), None, 0.0, 1.0, cv2.NORM_MINMAX)
+    if depth_map.dtype == np.uint8:
+        depth_map_normalized = depth_map.astype(np.float32) / 255.0
+    elif depth_map.dtype == np.uint16:
+        depth_map_normalized = depth_map.astype(np.float32) / 65535.0
+    else:
+        raise ValueError("Unsupported depth map format. Expected 8-bit or 16-bit images.")
 
-    # Create an empty parallax frame and mask for already set pixels
+    # Create an empty parallax frame and boolean mask for filled pixels
     parallax_frame = np.zeros_like(rgb_frame, dtype=np.uint8)
     pixel_set_mask = np.zeros((height, width), dtype=bool)
 
@@ -34,8 +39,9 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
             layer = np.roll(layer, shift, axis=1)
             layer[:, shift:] = 0
 
-        # Overlay the shifted layer into the parallax frame
-        parallax_frame[~pixel_set_mask] = layer[~pixel_set_mask]
+        # Overlay the shifted layer into the parallax frame where not already filled
+        overlay_mask = mask & ~pixel_set_mask
+        parallax_frame[overlay_mask] = layer[overlay_mask]
         pixel_set_mask |= mask
 
     return parallax_frame
