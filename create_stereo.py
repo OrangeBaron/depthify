@@ -11,14 +11,16 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
     # Normalize depth map to range [0.0, 1.0]
     depth_map_normalized = cv2.normalize(depth_map.astype(np.float32), None, 0.0, 1.0, cv2.NORM_MINMAX)
 
+    # Create an empty parallax frame and mask for already set pixels
     parallax_frame = np.zeros_like(rgb_frame, dtype=np.uint8)
+    pixel_set_mask = np.zeros((height, width), dtype=bool)
 
     for i in range(layers):
         min_luminance = i / layers
         max_luminance = (i + 1) / layers
 
         # Create mask for pixels in the current luminance range
-        mask = (depth_map_normalized >= min_luminance) & (depth_map_normalized < max_luminance)
+        mask = (depth_map_normalized >= min_luminance) & (depth_map_normalized < max_luminance) & (~pixel_set_mask)
 
         # Extract the layer and shift it horizontally
         layer = np.zeros_like(rgb_frame, dtype=np.uint8)
@@ -32,31 +34,22 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
             layer = np.roll(layer, shift, axis=1)
             layer[:, shift:] = 0
 
-        # Overlay the shifted layer into the parallax frame (overwrite where mask is True)
-        parallax_frame[mask] = layer[mask]
+        # Overlay the shifted layer into the parallax frame
+        parallax_frame[~pixel_set_mask] = layer[~pixel_set_mask]
+        pixel_set_mask |= mask
 
     return parallax_frame
 
 def inpaint_horizontal(frame, direction):
-    """Inpaint missing areas in the frame horizontally.
-    Args:
-        frame: The frame with missing areas (holes).
-        direction: Direction of inpainting ('left' or 'right').
-    Returns:
-        Inpainted frame.
-    """
+    """Inpaint missing areas in the frame horizontally using NumPy."""
     mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
 
     if direction == 'left':
-        for y in range(frame.shape[0]):
-            for x in range(1, frame.shape[1]):
-                if mask[y, x]:
-                    frame[y, x] = frame[y, x - 1]  # Fill from the left
+        for x in range(1, frame.shape[1]):
+            frame[:, x][mask[:, x]] = frame[:, x - 1][mask[:, x]]
     elif direction == 'right':
-        for y in range(frame.shape[0]):
-            for x in range(frame.shape[1] - 2, -1, -1):
-                if mask[y, x]:
-                    frame[y, x] = frame[y, x + 1]  # Fill from the right
+        for x in range(frame.shape[1] - 2, -1, -1):
+            frame[:, x][mask[:, x]] = frame[:, x + 1][mask[:, x]]
 
     return frame
 
