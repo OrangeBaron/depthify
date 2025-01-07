@@ -4,14 +4,6 @@ import numpy as np
 import argparse
 import time
 
-def inpaint_missing_regions(image, mask):
-    """
-    Perform inpainting to fill missing regions (holes) in the image.
-    """
-    dilated_mask = cv2.dilate(mask.astype(np.uint8) * 255, np.ones((3, 3), np.uint8), iterations=1)
-    inpainted = cv2.inpaint(image, dilated_mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
-    return inpainted
-
 def create_stereoscopic_frames(rgb_folder, depth_folder, output_folder, displacement, factor=1):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -46,11 +38,10 @@ def create_stereoscopic_frames(rgb_folder, depth_folder, output_folder, displace
         center_shift = (displacement * factor) // 2
 
         for level in range(displacement):
-            lower_threshold = int((level / displacement) * 255)
-            upper_threshold = int(((level + 1) / displacement) * 255)
+            threshold = int((level / displacement) * 255)
 
-            # Create mask for pixels within the threshold range
-            mask = (depth_image >= lower_threshold) & (depth_image < upper_threshold)
+            # Create mask for pixels above the threshold
+            mask = depth_image >= threshold
 
             # Shift amount for parallax effect
             shift = level * factor
@@ -62,16 +53,6 @@ def create_stereoscopic_frames(rgb_folder, depth_folder, output_folder, displace
             # Create right image (shift to the left with center adjustment)
             right_shifted = np.roll(rgb_image, -shift + center_shift, axis=1)
             right_image[mask] = right_shifted[mask]
-
-        # Identify holes (black regions) in left and right images
-        left_holes = np.all(left_image == 0, axis=2)
-        right_holes = np.all(right_image == 0, axis=2)
-
-        # Inpaint missing regions to fill gaps
-        if np.any(left_holes):
-            left_image = inpaint_missing_regions(left_image, left_holes)
-        if np.any(right_holes):
-            right_image = inpaint_missing_regions(right_image, right_holes)
 
         # Combine left and right images side-by-side
         stereoscopic_frame = np.hstack((left_image, right_image))
