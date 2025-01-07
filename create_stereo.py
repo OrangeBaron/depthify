@@ -2,7 +2,6 @@ import os
 import cv2
 import numpy as np
 import argparse
-import time
 from tqdm import tqdm
 
 def create_parallax_frame(rgb_frame, depth_map, layers, factor):
@@ -38,15 +37,6 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def format_time(seconds):
-    """Format time in hours, minutes, or seconds."""
-    if seconds >= 3600:
-        return f"{seconds // 3600:.0f}h {(seconds % 3600) // 60:.0f}m"
-    elif seconds >= 60:
-        return f"{seconds // 60:.0f}m {seconds % 60:.0f}s"
-    else:
-        return f"{seconds:.0f}s"
-
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     """Process all frames to create stereoscopic video."""
     rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
@@ -55,8 +45,6 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     assert len(rgb_files) == len(depth_files), "Mismatch in number of RGB and depth frames."
 
     os.makedirs(output_dir, exist_ok=True)
-
-    start_time = time.time()
 
     for idx, (rgb_file, depth_file) in enumerate(tqdm(zip(rgb_files, depth_files), total=len(rgb_files), desc="Processing frames")):
         # Load RGB frame and depth map
@@ -73,11 +61,6 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         # Save the combined frame
         output_path = os.path.join(output_dir, f"{idx:06d}.png")
         cv2.imwrite(output_path, side_by_side_frame)
-
-        # Estimate time remaining
-        elapsed_time = time.time() - start_time
-        remaining_time = elapsed_time / (idx + 1) * (len(rgb_files) - idx - 1)
-        print(f"Frame {idx+1}/{len(rgb_files)} processed. Estimated time remaining: {format_time(remaining_time)}.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create 3D stereoscopic video frames from RGB frames and depth maps.")
