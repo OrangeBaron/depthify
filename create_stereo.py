@@ -37,6 +37,29 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
+def inpaint_horizontal(frame, direction):
+    """Inpaint missing areas in the frame horizontally.
+    Args:
+        frame: The frame with missing areas (holes).
+        direction: Direction of inpainting ('left' or 'right').
+    Returns:
+        Inpainted frame.
+    """
+    mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
+
+    if direction == 'left':
+        for y in range(frame.shape[0]):
+            for x in range(1, frame.shape[1]):
+                if mask[y, x]:
+                    frame[y, x] = frame[y, x - 1]  # Fill from the left
+    elif direction == 'right':
+        for y in range(frame.shape[0]):
+            for x in range(frame.shape[1] - 2, -1, -1):
+                if mask[y, x]:
+                    frame[y, x] = frame[y, x + 1]  # Fill from the right
+
+    return frame
+
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     """Process all frames to create stereoscopic video."""
     rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
@@ -54,6 +77,10 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         # Create parallax frames for left and right eyes
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
+
+        # Inpaint missing areas
+        left_frame = inpaint_horizontal(left_frame, direction='left')
+        right_frame = inpaint_horizontal(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
