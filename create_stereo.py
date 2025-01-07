@@ -38,10 +38,11 @@ def create_stereoscopic_frames(rgb_folder, depth_folder, output_folder, displace
         center_shift = (displacement * factor) // 2
 
         for level in range(displacement):
-            threshold = int((level / displacement) * 255)
+            lower_threshold = int((level / displacement) * 255)
+            upper_threshold = int(((level + 1) / displacement) * 255)
 
-            # Create mask for pixels above the threshold
-            mask = depth_image >= threshold
+            # Create mask for pixels within the threshold range
+            mask = (depth_image >= lower_threshold) & (depth_image < upper_threshold)
 
             # Shift amount for parallax effect
             shift = level * factor
