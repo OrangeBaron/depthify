@@ -1,97 +1,92 @@
 import os
 import cv2
 import numpy as np
+import argparse
 import time
+from tqdm import tqdm
+
+def create_parallax_frame(rgb_frame, depth_map, layers, factor):
+    """Create a single frame with parallax effect for one eye."""
+    height, width, _ = rgb_frame.shape
+
+    # Normalize depth map to range [0.0, 1.0]
+    depth_map_normalized = cv2.normalize(depth_map.astype(np.float32), None, 0.0, 1.0, cv2.NORM_MINMAX)
+
+    parallax_frame = np.zeros_like(rgb_frame, dtype=np.uint8)
+
+    for i in range(layers):
+        min_luminance = i / layers
+        max_luminance = (i + 1) / layers
+
+        # Create mask for pixels in the current luminance range
+        mask = (depth_map_normalized >= min_luminance) & (depth_map_normalized < max_luminance)
+
+        # Extract the layer and shift it horizontally
+        layer = np.zeros_like(rgb_frame, dtype=np.uint8)
+        layer[mask] = rgb_frame[mask]
+
+        shift = int((i - layers / 2) * factor)
+        if shift > 0:
+            layer = np.roll(layer, shift, axis=1)
+            layer[:, :shift] = 0
+        elif shift < 0:
+            layer = np.roll(layer, shift, axis=1)
+            layer[:, shift:] = 0
+
+        # Accumulate the shifted layer into the parallax frame
+        parallax_frame = cv2.add(parallax_frame, layer)
+
+    return parallax_frame
 
 def format_time(seconds):
-    if seconds > 3600:
-        return f"{seconds // 3600}h {(seconds % 3600) // 60}m"
-    elif seconds > 60:
-        return f"{seconds // 60}m {seconds % 60}s"
+    """Format time in hours, minutes, or seconds."""
+    if seconds >= 3600:
+        return f"{seconds // 3600:.0f}h {(seconds % 3600) // 60:.0f}m"
+    elif seconds >= 60:
+        return f"{seconds // 60:.0f}m {seconds % 60:.0f}s"
     else:
-        return f"{seconds}s"
+        return f"{seconds:.0f}s"
 
-def create_3d_stereo_frames(rgb_dir, depth_dir, output_dir, layers=10, factor=3):
-    # Creazione della cartella di output se non esiste
+def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
+    """Process all frames to create stereoscopic video."""
+    rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
+    depth_files = sorted([f for f in os.listdir(depth_dir) if f.endswith('.png') or f.endswith('.jpg')])
+
+    assert len(rgb_files) == len(depth_files), "Mismatch in number of RGB and depth frames."
+
     os.makedirs(output_dir, exist_ok=True)
 
-    # Elenco dei frame RGB e depthmap ordinati
-    rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith(('.png', '.jpg'))])
-    depth_files = sorted([f for f in os.listdir(depth_dir) if f.endswith(('.png', '.jpg'))])
-
-    # Verifica che le cartelle abbiano lo stesso numero di file
-    if len(rgb_files) != len(depth_files):
-        raise ValueError("Le cartelle RGB e depthmap devono contenere lo stesso numero di file.")
-
-    total_frames = len(rgb_files)
     start_time = time.time()
 
-    for i, (rgb_file, depth_file) in enumerate(zip(rgb_files, depth_files)):
-        frame_start_time = time.time()
+    for idx, (rgb_file, depth_file) in enumerate(tqdm(zip(rgb_files, depth_files), total=len(rgb_files), desc="Processing frames")):
+        # Load RGB frame and depth map
+        rgb_frame = cv2.imread(os.path.join(rgb_dir, rgb_file))
+        depth_map = cv2.imread(os.path.join(depth_dir, depth_file), cv2.IMREAD_UNCHANGED)
 
-        # Lettura dei file
-        rgb_image = cv2.imread(os.path.join(rgb_dir, rgb_file))
-        depth_image = cv2.imread(os.path.join(depth_dir, depth_file), cv2.IMREAD_UNCHANGED)
+        # Create parallax frames for left and right eyes
+        left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
+        right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Conversione della depthmap a scala di grigi 8 bit se necessario
-        if depth_image.dtype == np.uint16:
-            depth_image = cv2.convertScaleAbs(depth_image, alpha=255.0 / 65535.0)
+        # Combine frames side-by-side
+        side_by_side_frame = np.hstack((left_frame, right_frame))
 
-        h, w, _ = rgb_image.shape
-        left_image = np.zeros_like(rgb_image)
-        right_image = np.zeros_like(rgb_image)
+        # Save the combined frame
+        output_path = os.path.join(output_dir, f"{idx:06d}.png")
+        cv2.imwrite(output_path, side_by_side_frame)
 
-        # Intervallo di luminanza per ogni layer
-        luminance_step = 256 // layers
-
-        # Punto di partenza per centrare i fotogrammi
-        base_offset = layers * factor // 2
-
-        for layer in range(layers):
-            min_lum = layer * luminance_step
-            max_lum = (layer + 1) * luminance_step
-
-            # Maschera per selezionare i pixel del livello corrente
-            mask = cv2.inRange(depth_image, min_lum, max_lum)
-
-            # Shift per il livello corrente
-            offset = base_offset - layer * factor
-
-            # Shift per l'immagine sinistra
-            left_shift = np.roll(rgb_image, -offset, axis=1)
-            left_shift[:, -offset:] = 0  # Riempimento dei bordi
-
-            # Shift per l'immagine destra
-            right_shift = np.roll(rgb_image, offset, axis=1)
-            right_shift[:, :offset] = 0  # Riempimento dei bordi
-
-            # Applicazione della maschera ai livelli corrente
-            left_image[mask > 0] = left_shift[mask > 0]
-            right_image[mask > 0] = right_shift[mask > 0]
-
-        # Combinazione delle immagini sinistra e destra side-by-side
-        stereo_frame = np.hstack((left_image, right_image))
-
-        # Salvataggio del frame risultante
-        output_path = os.path.join(output_dir, f"{i:06d}.png")
-        cv2.imwrite(output_path, stereo_frame)
-
+        # Estimate time remaining
         elapsed_time = time.time() - start_time
-        avg_time_per_frame = elapsed_time / (i + 1)
-        remaining_time = avg_time_per_frame * (total_frames - (i + 1))
-
-        print(f"Frame {i + 1}/{total_frames} completato: {output_path} | Tempo rimanente: {format_time(int(remaining_time))}")
+        remaining_time = elapsed_time / (idx + 1) * (len(rgb_files) - idx - 1)
+        print(f"Frame {idx+1}/{len(rgb_files)} processed. Estimated time remaining: {format_time(remaining_time)}.")
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Crea frame 3D stereoscopici da immagini RGB e depthmap.")
-    parser.add_argument("rgb_dir", type=str, help="Cartella contenente i frame RGB.")
-    parser.add_argument("depth_dir", type=str, help="Cartella contenente le depthmap.")
-    parser.add_argument("output_dir", type=str, help="Cartella di output per i frame stereoscopici.")
-    parser.add_argument("--layers", type=int, default=10, help="Numero di livelli da creare.")
-    parser.add_argument("--factor", type=int, default=3, help="Numero di pixel di spostamento per livello.")
+    parser = argparse.ArgumentParser(description="Create 3D stereoscopic video frames from RGB frames and depth maps.")
+    parser.add_argument("--rgb_dir", type=str, required=True, help="Directory containing RGB frames.")
+    parser.add_argument("--depth_dir", type=str, required=True, help="Directory containing depth maps.")
+    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output frames.")
+    parser.add_argument("--layers", type=int, default=10, help="Number of parallax layers.")
+    parser.add_argument("--factor", type=int, default=3, help="Parallax shift factor.")
 
     args = parser.parse_args()
 
-    create_3d_stereo_frames(args.rgb_dir, args.depth_dir, args.output_dir, args.layers, args.factor)
+    process_frames(args.rgb_dir, args.depth_dir, args.output_dir, args.layers, args.factor)
