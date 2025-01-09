@@ -1,54 +1,12 @@
-import os
-import glob
-import torch
-import utils
-import cv2
-import time
-import numpy as np
-from midas.model_loader import load_model
-
-def process(device, model, image, input_size, target_size, optimize):
-    sample = torch.from_numpy(image).to(device).unsqueeze(0)
-
-    if optimize and device == torch.device("cuda"):
-        sample = sample.to(memory_format=torch.channels_last)
-        sample = sample.half()
-
-    prediction = model.forward(sample)
-    prediction = torch.nn.functional.interpolate(
-        prediction.unsqueeze(1),
-        size=target_size[::-1],
-        mode="bicubic",
-        align_corners=False,
-    ).squeeze().cpu().numpy()
-
-    return prediction
-
-
-def create_side_by_side(image, depth, grayscale):
-    depth_min = depth.min()
-    depth_max = depth.max()
-    normalized_depth = 255 * (depth - depth_min) / (depth_max - depth_min)
-    normalized_depth *= 3
-
-    right_side = np.repeat(np.expand_dims(normalized_depth, 2), 3, axis=2) / 3
-    if not grayscale:
-        right_side = cv2.applyColorMap(np.uint8(right_side), cv2.COLORMAP_INFERNO)
-
-    if image is None:
-        return right_side
-    else:
-        return np.concatenate((image, right_side), axis=1)
-
-
-def run(input_path, output_path, model_path, model_type="dpt_beit_large_512", optimize=False, grayscale=False):
+def run(input_path, output_path, model_type="dpt_beit_large_512", optimize=False, grayscale=False):
     print("Initialize")
 
     # select device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device: %s" % device)
 
-    model, transform, net_w, net_h = load_model(device, model_path, model_type, optimize)
+    # Load model using the default model for the given model type
+    model, transform, net_w, net_h = load_model(device, None, model_type, optimize)
 
     # get input
     image_names = glob.glob(os.path.join(input_path, "*"))
@@ -97,6 +55,6 @@ def run(input_path, output_path, model_path, model_type="dpt_beit_large_512", op
 if __name__ == "__main__":
     input_path = "/content/rgb"  # path to input images
     output_path = "/content/depth"  # path to save depth maps
-    model_weights = "path_to_your_model_weights"  # path to model weights (MiDaS model)
+    model_type = "dpt_beit_large_512"  # default model type
 
-    run(input_path, output_path, model_weights, optimize=False, grayscale=True)
+    run(input_path, output_path, model_type, optimize=False, grayscale=True)
