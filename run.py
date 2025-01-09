@@ -1,4 +1,27 @@
-def run(input_path, output_path, model_type="dpt_beit_large_512", optimize=False, grayscale=False):
+import os
+import glob
+import torch
+import utils
+import cv2
+import time
+import numpy as np
+from midas.model_loader import load_model
+
+def process(device, model, image, input_size, target_size):
+    sample = torch.from_numpy(image).to(device).unsqueeze(0)
+
+    prediction = model.forward(sample)
+    prediction = torch.nn.functional.interpolate(
+        prediction.unsqueeze(1),
+        size=target_size[::-1],
+        mode="bicubic",
+        align_corners=False,
+    ).squeeze().cpu().numpy()
+
+    return prediction
+
+
+def run(input_path, output_path, model_type="dpt_beit_large_512"):
     print("Initialize")
 
     # select device
@@ -6,7 +29,7 @@ def run(input_path, output_path, model_type="dpt_beit_large_512", optimize=False
     print("Device: %s" % device)
 
     # Load model using the default model for the given model type
-    model, transform, net_w, net_h = load_model(device, None, model_type, optimize)
+    model, transform, net_w, net_h = load_model(device, None, model_type)
 
     # get input
     image_names = glob.glob(os.path.join(input_path, "*"))
@@ -27,16 +50,11 @@ def run(input_path, output_path, model_type="dpt_beit_large_512", optimize=False
 
         # compute
         with torch.no_grad():
-            prediction = process(device, model, image, (net_w, net_h), original_image_rgb.shape[1::-1], optimize)
+            prediction = process(device, model, image, (net_w, net_h), original_image_rgb.shape[1::-1])
 
         # output
         filename = os.path.join(output_path, os.path.splitext(os.path.basename(image_name))[0])
-        if not grayscale:
-            utils.write_depth(filename, prediction, grayscale, bits=2)
-        else:
-            original_image_bgr = np.flip(original_image_rgb, 2)
-            content = create_side_by_side(original_image_bgr * 255, prediction, grayscale)
-            cv2.imwrite(filename + ".png", content)
+        utils.write_depth(filename, prediction, grayscale=True, bits=2)
 
         # Estimate remaining time
         elapsed_time = time.time() - start_time
@@ -57,4 +75,4 @@ if __name__ == "__main__":
     output_path = "/content/depth"  # path to save depth maps
     model_type = "dpt_beit_large_512"  # default model type
 
-    run(input_path, output_path, model_type, optimize=False, grayscale=True)
+    run(input_path, output_path, model_type)
