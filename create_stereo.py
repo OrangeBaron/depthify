@@ -10,8 +10,11 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor, use_gpu=False):
     height, width, _ = rgb_frame.shape
 
     # Normalize depth map to range [0.0, 1.0]
-    depth_map = cp.asarray(depth_map) if use_gpu else depth_map
-    depth_map_normalized = cv2.normalize(depth_map.astype(np.float32), None, 0.0, 1.0, cv2.NORM_MINMAX)
+    if use_gpu:
+        depth_map = cp.asarray(depth_map)
+        depth_map_normalized = cp.asnumpy(cp.clip((depth_map - cp.min(depth_map)) / (cp.max(depth_map) - cp.min(depth_map)), 0.0, 1.0))
+    else:
+        depth_map_normalized = cv2.normalize(depth_map.astype(np.float32), None, 0.0, 1.0, cv2.NORM_MINMAX)
 
     parallax_frame = cp.zeros_like(rgb_frame, dtype=cp.uint8) if use_gpu else np.zeros_like(rgb_frame, dtype=np.uint8)
 
