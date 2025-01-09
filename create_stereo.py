@@ -1,68 +1,50 @@
 import os
 import cv2
+import torch
 import numpy as np
-import argparse
 from tqdm import tqdm
 
-def create_parallax_frame(rgb_frame, depth_map, layers, factor):
-    """Create a single frame with parallax effect for one eye."""
-    height, width, _ = rgb_frame.shape
+def create_parallax_frame_gpu(rgb_frame, depth_map, layers, factor, device):
+    """Create a single frame with parallax effect for one eye using GPU."""
+    # Convert to PyTorch tensors and move to device
+    rgb_tensor = torch.from_numpy(rgb_frame).permute(2, 0, 1).float().to(device)  # Shape: (C, H, W)
+    depth_tensor = torch.from_numpy(depth_map).float().to(device)  # Shape: (H, W)
 
     # Normalize depth map to range [0.0, 1.0]
-    depth_map_normalized = cv2.normalize(depth_map.astype(np.float32), None, 0.0, 1.0, cv2.NORM_MINMAX)
+    depth_tensor = (depth_tensor - depth_tensor.min()) / (depth_tensor.max() - depth_tensor.min())
 
-    parallax_frame = np.zeros_like(rgb_frame, dtype=np.uint8)
+    parallax_frame = torch.zeros_like(rgb_tensor)  # Initialize the output frame
 
     for i in range(layers):
         min_luminance = i / layers
         max_luminance = (i + 1) / layers
 
-        # Create mask for pixels in the current luminance range
-        mask = (depth_map_normalized >= min_luminance) & (depth_map_normalized < max_luminance)
+        # Create mask for the current layer
+        mask = (depth_tensor >= min_luminance) & (depth_tensor < max_luminance)
 
-        # Extract the layer and shift it horizontally
-        layer = np.zeros_like(rgb_frame, dtype=np.uint8)
-        layer[mask] = rgb_frame[mask]
+        # Expand mask to RGB channels and apply it
+        mask_rgb = mask.unsqueeze(0).expand_as(rgb_tensor)  # Shape: (C, H, W)
+        layer = torch.where(mask_rgb, rgb_tensor, torch.zeros_like(rgb_tensor))
 
+        # Compute horizontal shift
         shift = int((i - layers / 2) * factor)
         if shift > 0:
-            layer = np.roll(layer, shift, axis=1)
-            layer[:, :shift] = 0
+            layer = torch.roll(layer, shifts=shift, dims=2)  # Shift to the right
+            layer[:, :, :shift] = 0  # Clear wrapped pixels
         elif shift < 0:
-            layer = np.roll(layer, shift, axis=1)
-            layer[:, shift:] = 0
+            layer = torch.roll(layer, shifts=shift, dims=2)  # Shift to the left
+            layer[:, :, shift:] = 0  # Clear wrapped pixels
 
-        # Overlay the layer on the parallax frame, ensuring upper layers cover lower layers
-        overlay_mask = np.any(layer != 0, axis=2)
-        parallax_frame[overlay_mask] = layer[overlay_mask]
+        # Overlay the layer on the parallax frame
+        overlay_mask = mask.unsqueeze(0).expand_as(rgb_tensor)
+        parallax_frame = torch.where(overlay_mask, layer, parallax_frame)
 
+    # Convert back to numpy and uint8
+    parallax_frame = parallax_frame.clamp(0, 255).byte().permute(1, 2, 0).cpu().numpy()
     return parallax_frame
 
-def inpaint_horizontal(frame, direction):
-    """Inpaint missing areas in the frame horizontally.
-    Args:
-        frame: The frame with missing areas (holes).
-        direction: Direction of inpainting ('left' or 'right').
-    Returns:
-        Inpainted frame.
-    """
-    mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
-
-    if direction == 'left':
-        for y in range(frame.shape[0]):
-            for x in range(1, frame.shape[1]):
-                if mask[y, x]:
-                    frame[y, x] = frame[y, x - 1]  # Fill from the left
-    elif direction == 'right':
-        for y in range(frame.shape[0]):
-            for x in range(frame.shape[1] - 2, -1, -1):
-                if mask[y, x]:
-                    frame[y, x] = frame[y, x + 1]  # Fill from the right
-
-    return frame
-
-def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
-    """Process all frames to create stereoscopic video."""
+def process_frames_gpu(rgb_dir, depth_dir, output_dir, layers, factor, device):
+    """Process all frames to create stereoscopic video using GPU."""
     rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
     depth_files = sorted([f for f in os.listdir(depth_dir) if f.endswith('.png') or f.endswith('.jpg')])
 
@@ -76,12 +58,8 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         depth_map = cv2.imread(os.path.join(depth_dir, depth_file), cv2.IMREAD_UNCHANGED)
 
         # Create parallax frames for left and right eyes
-        left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
-        right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
-
-        # Inpaint missing areas
-        left_frame = inpaint_horizontal(left_frame, direction='left')
-        right_frame = inpaint_horizontal(right_frame, direction='right')
+        left_frame = create_parallax_frame_gpu(rgb_frame, depth_map, layers, factor, device)
+        right_frame = create_parallax_frame_gpu(rgb_frame, depth_map, layers, -factor, device)
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
@@ -91,13 +69,16 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         cv2.imwrite(output_path, side_by_side_frame)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Create 3D stereoscopic video frames from RGB frames and depth maps.")
+    import argparse
+    parser = argparse.ArgumentParser(description="Create 3D stereoscopic video frames from RGB frames and depth maps using GPU.")
     parser.add_argument("--rgb_dir", type=str, required=True, help="Directory containing RGB frames.")
     parser.add_argument("--depth_dir", type=str, required=True, help="Directory containing depth maps.")
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save output frames.")
     parser.add_argument("--layers", type=int, default=10, help="Number of parallax layers.")
     parser.add_argument("--factor", type=int, default=3, help="Parallax shift factor.")
+    parser.add_argument("--device", type=str, default="cuda", help="Device to use ('cuda' or 'cpu').")
 
     args = parser.parse_args()
+    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
-    process_frames(args.rgb_dir, args.depth_dir, args.output_dir, args.layers, args.factor)
+    process_frames_gpu(args.rgb_dir, args.depth_dir, args.output_dir, args.layers, args.factor, device)
