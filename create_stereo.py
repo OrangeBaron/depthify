@@ -44,31 +44,24 @@ def inpaint_horizontal(frame, direction):
         Inpainted frame.
     """
     mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
+    height, width, _ = frame.shape
 
     if direction == 'left':
-        for y in range(frame.shape[0]):
-            hole_start = None
-            for x in range(frame.shape[1]):
-                if mask[y, x]:
-                    if hole_start is None:
-                        hole_start = x
-                elif hole_start is not None:
-                    hole_width = x - hole_start
-                    for i in range(hole_width):
-                        frame[y, hole_start + i] = frame[y, x + i - hole_width]  # Fill with subsequent pixels
-                    hole_start = None
+        for y in range(height):
+            last_valid = None
+            for x in range(width):
+                if not mask[y, x]:
+                    last_valid = frame[y, x]
+                elif last_valid is not None:
+                    frame[y, x] = last_valid
     elif direction == 'right':
-        for y in range(frame.shape[0]):
-            hole_start = None
-            for x in range(frame.shape[1] - 1, -1, -1):
-                if mask[y, x]:
-                    if hole_start is None:
-                        hole_start = x
-                elif hole_start is not None:
-                    hole_width = hole_start - x
-                    for i in range(hole_width):
-                        frame[y, hole_start - i] = frame[y, x - i + hole_width]  # Fill with preceding pixels
-                    hole_start = None
+        for y in range(height):
+            last_valid = None
+            for x in range(width - 1, -1, -1):
+                if not mask[y, x]:
+                    last_valid = frame[y, x]
+                elif last_valid is not None:
+                    frame[y, x] = last_valid
 
     return frame
 
