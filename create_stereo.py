@@ -8,14 +8,14 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
     """Create a single frame with parallax effect for one eye."""
     height, width, _ = rgb_frame.shape
 
-    # Normalize depth map to range [0, layers]
-    depth_map_normalized = cv2.normalize(depth_map.astype(np.float32), None, 0, layers, cv2.NORM_MINMAX)
+    # Normalize depth map to range [0, layers] as integers
+    depth_map_normalized = cv2.normalize(depth_map, None, 0, layers, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
 
     parallax_frame = np.zeros_like(rgb_frame, dtype=np.uint8)
 
     for i in range(layers):
         # Create mask for pixels in the current layer
-        mask = (depth_map_normalized >= i) & (depth_map_normalized < i + 1)
+        mask = (depth_map_normalized == i)
 
         # Extract the layer and shift it horizontally
         layer = np.zeros_like(rgb_frame, dtype=np.uint8)
