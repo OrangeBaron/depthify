@@ -5,7 +5,7 @@ import utils
 import cv2
 import time
 
-from midas.model_loader import load_model
+from midas.model_loader import load_model, default_models
 
 def process(device, model, image, input_size, target_size, optimize):
     sample = torch.from_numpy(image).to(device).unsqueeze(0)
@@ -20,12 +20,13 @@ def process(device, model, image, input_size, target_size, optimize):
     ).squeeze().cpu().numpy()
     return prediction
 
-def run(input_path, output_path, model_path, model_type="dpt_beit_large_512", optimize=False, grayscale=False):
+def run(input_path, output_path, model_type="dpt_beit_large_512", optimize=False, grayscale=False):
     # seleziona il dispositivo
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device: %s" % device)
 
-    model, transform, net_w, net_h = load_model(device, model_path, model_type, optimize)
+    # carica il modello predefinito
+    model, transform, net_w, net_h = load_model(device, default_models[model_type], model_type, optimize)
 
     # ottieni le immagini di input
     image_names = glob.glob(os.path.join(input_path, "*"))
@@ -67,6 +68,6 @@ if __name__ == "__main__":
     # Parametri hardcoded per il tuo caso d'uso
     input_path = '/content/rgb'
     output_path = '/content/depth'
-    model_weights = "path_to_your_model_weights"  # Sostituisci con il percorso effettivo del modello
-
-    run(input_path, output_path, model_weights, model_type="dpt_beit_large_512", optimize=False, grayscale=True)
+    
+    # Chiamata a run senza bisogno di model_weights
+    run(input_path, output_path, model_type="dpt_beit_large_512", optimize=False, grayscale=True)
