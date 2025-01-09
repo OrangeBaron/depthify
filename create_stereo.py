@@ -47,26 +47,29 @@ def inpaint_horizontal(frame, direction):
 
     if direction == 'left':
         for y in range(frame.shape[0]):
-            last_valid_pixels = []
+            last_valid_pixels = None
             for x in range(frame.shape[1]):
                 if mask[y, x]:
-                    if last_valid_pixels:
-                        repeat_count = len(last_valid_pixels)
-                        frame[y, x] = last_valid_pixels[(x - len(last_valid_pixels)) % repeat_count]
+                    if last_valid_pixels is not None:
+                        # Fill the hole with the last valid pixels
+                        for offset in range(x - last_valid_pixels.shape[0], x):
+                            if offset >= 0:
+                                frame[y, offset] = last_valid_pixels[offset - (x - last_valid_pixels.shape[0])]
                 else:
-                    last_valid_pixels.append(frame[y, x].copy())
-                    last_valid_pixels = last_valid_pixels[-frame.shape[1]:]  # Limit to the frame width
+                    last_valid_pixels = frame[y, max(0, x - last_valid_pixels.shape[0]):x].copy()
+
     elif direction == 'right':
         for y in range(frame.shape[0]):
-            last_valid_pixels = []
+            last_valid_pixels = None
             for x in range(frame.shape[1] - 1, -1, -1):
                 if mask[y, x]:
-                    if last_valid_pixels:
-                        repeat_count = len(last_valid_pixels)
-                        frame[y, x] = last_valid_pixels[(len(last_valid_pixels) - (frame.shape[1] - x)) % repeat_count]
+                    if last_valid_pixels is not None:
+                        # Fill the hole with the last valid pixels
+                        for offset in range(x + 1, x + 1 + last_valid_pixels.shape[0]):
+                            if offset < frame.shape[1]:
+                                frame[y, offset] = last_valid_pixels[offset - (x + 1)]
                 else:
-                    last_valid_pixels.insert(0, frame[y, x].copy())
-                    last_valid_pixels = last_valid_pixels[-frame.shape[1]:]  # Limit to the frame width
+                    last_valid_pixels = frame[y, x + 1:min(frame.shape[1], x + 1 + last_valid_pixels.shape[0])].copy()
 
     return frame
 
