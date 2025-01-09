@@ -47,26 +47,26 @@ def inpaint_horizontal(frame, direction):
 
     if direction == 'left':
         for y in range(frame.shape[0]):
-            last_valid_pixels = None
+            last_valid_pixels = []
             for x in range(frame.shape[1]):
                 if mask[y, x]:
-                    if last_valid_pixels is not None:
-                        frame[y, x] = last_valid_pixels[(x - len(last_valid_pixels)) % len(last_valid_pixels)]
+                    if last_valid_pixels:
+                        repeat_count = len(last_valid_pixels)
+                        frame[y, x] = last_valid_pixels[(x - len(last_valid_pixels)) % repeat_count]
                 else:
-                    if last_valid_pixels is None:
-                        last_valid_pixels = []
                     last_valid_pixels.append(frame[y, x].copy())
+                    last_valid_pixels = last_valid_pixels[-frame.shape[1]:]  # Limit to the frame width
     elif direction == 'right':
         for y in range(frame.shape[0]):
-            last_valid_pixels = None
+            last_valid_pixels = []
             for x in range(frame.shape[1] - 1, -1, -1):
                 if mask[y, x]:
-                    if last_valid_pixels is not None:
-                        frame[y, x] = last_valid_pixels[(len(last_valid_pixels) - (frame.shape[1] - x)) % len(last_valid_pixels)]
+                    if last_valid_pixels:
+                        repeat_count = len(last_valid_pixels)
+                        frame[y, x] = last_valid_pixels[(len(last_valid_pixels) - (frame.shape[1] - x)) % repeat_count]
                 else:
-                    if last_valid_pixels is None:
-                        last_valid_pixels = []
                     last_valid_pixels.insert(0, frame[y, x].copy())
+                    last_valid_pixels = last_valid_pixels[-frame.shape[1]:]  # Limit to the frame width
 
     return frame
 
