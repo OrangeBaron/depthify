@@ -20,6 +20,20 @@ def process(device, model, image, input_size, target_size, optimize):
     ).squeeze().cpu().numpy()
     return prediction
 
+def format_time(seconds):
+    """Format seconds into hours, minutes, and seconds."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = int(seconds % 60)
+    
+    time_str = ""
+    if hours > 0:
+        time_str += f"{hours}h "
+    if minutes > 0 or hours > 0:
+        time_str += f"{minutes}m "
+    time_str += f"{seconds}s"
+    return time_str
+
 def run(input_path, output_path, model_type="dpt_beit_large_512", optimize=False, grayscale=False):
     # seleziona il dispositivo
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -60,7 +74,7 @@ def run(input_path, output_path, model_type="dpt_beit_large_512", optimize=False
         avg_time_per_image = elapsed_time / (index + 1) if index + 1 > 0 else 0
         images_remaining = num_images - (index + 1)
         estimated_time_remaining = avg_time_per_image * images_remaining
-        print(f"    Time elapsed: {elapsed_time:.0f}s | Estimated time remaining: {estimated_time_remaining:.0f}s")
+        print(f"    Time elapsed: {format_time(elapsed_time)} | Estimated time remaining: {format_time(estimated_time_remaining)}")
 
     print("Finished")
 
