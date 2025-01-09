@@ -47,14 +47,28 @@ def inpaint_horizontal(frame, direction):
 
     if direction == 'left':
         for y in range(frame.shape[0]):
-            for x in range(1, frame.shape[1]):
+            hole_start = None
+            for x in range(frame.shape[1]):
                 if mask[y, x]:
-                    frame[y, x] = frame[y, x - 1]  # Fill from the left
+                    if hole_start is None:
+                        hole_start = x
+                elif hole_start is not None:
+                    hole_width = x - hole_start
+                    for i in range(hole_width):
+                        frame[y, hole_start + i] = frame[y, x + i - hole_width]  # Fill with subsequent pixels
+                    hole_start = None
     elif direction == 'right':
         for y in range(frame.shape[0]):
-            for x in range(frame.shape[1] - 2, -1, -1):
+            hole_start = None
+            for x in range(frame.shape[1] - 1, -1, -1):
                 if mask[y, x]:
-                    frame[y, x] = frame[y, x + 1]  # Fill from the right
+                    if hole_start is None:
+                        hole_start = x
+                elif hole_start is not None:
+                    hole_width = hole_start - x
+                    for i in range(hole_width):
+                        frame[y, hole_start - i] = frame[y, x - i + hole_width]  # Fill with preceding pixels
+                    hole_start = None
 
     return frame
 
