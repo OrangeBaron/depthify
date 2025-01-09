@@ -47,29 +47,33 @@ def inpaint_horizontal(frame, direction):
 
     if direction == 'left':
         for y in range(frame.shape[0]):
-            last_valid_pixels = None
+            last_valid_pixels = []
             for x in range(frame.shape[1]):
                 if mask[y, x]:
-                    if last_valid_pixels is not None:
+                    if last_valid_pixels:
                         # Fill the hole with the last valid pixels
-                        for offset in range(x - last_valid_pixels.shape[0], x):
-                            if offset >= 0:
-                                frame[y, offset] = last_valid_pixels[offset - (x - last_valid_pixels.shape[0])]
+                        for offset in range(len(last_valid_pixels)):
+                            if x - len(last_valid_pixels) + offset >= 0:
+                                frame[y, x - len(last_valid_pixels) + offset] = last_valid_pixels[offset]
                 else:
-                    last_valid_pixels = frame[y, max(0, x - last_valid_pixels.shape[0]):x].copy()
+                    last_valid_pixels.append(frame[y, x].copy())
+                    if len(last_valid_pixels) > frame.shape[1]:
+                        last_valid_pixels.pop(0)
 
     elif direction == 'right':
         for y in range(frame.shape[0]):
-            last_valid_pixels = None
+            last_valid_pixels = []
             for x in range(frame.shape[1] - 1, -1, -1):
                 if mask[y, x]:
-                    if last_valid_pixels is not None:
+                    if last_valid_pixels:
                         # Fill the hole with the last valid pixels
-                        for offset in range(x + 1, x + 1 + last_valid_pixels.shape[0]):
-                            if offset < frame.shape[1]:
-                                frame[y, offset] = last_valid_pixels[offset - (x + 1)]
+                        for offset in range(len(last_valid_pixels)):
+                            if x + 1 + offset < frame.shape[1]:
+                                frame[y, x + 1 + offset] = last_valid_pixels[offset]
                 else:
-                    last_valid_pixels = frame[y, x + 1:min(frame.shape[1], x + 1 + last_valid_pixels.shape[0])].copy()
+                    last_valid_pixels.insert(0, frame[y, x].copy())
+                    if len(last_valid_pixels) > frame.shape[1]:
+                        last_valid_pixels.pop()
 
     return frame
 
