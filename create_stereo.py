@@ -47,33 +47,14 @@ def inpaint_horizontal(frame, direction):
 
     if direction == 'left':
         for y in range(frame.shape[0]):
-            last_valid_pixels = []
-            for x in range(frame.shape[1]):
+            for x in range(1, frame.shape[1]):
                 if mask[y, x]:
-                    if last_valid_pixels:
-                        # Fill the hole with the last valid pixels
-                        for offset in range(len(last_valid_pixels)):
-                            if x - len(last_valid_pixels) + offset >= 0:
-                                frame[y, x - len(last_valid_pixels) + offset] = last_valid_pixels[offset]
-                else:
-                    last_valid_pixels.append(frame[y, x].copy())
-                    if len(last_valid_pixels) > frame.shape[1]:
-                        last_valid_pixels.pop(0)
-
+                    frame[y, x] = frame[y, x - 1]  # Fill from the left
     elif direction == 'right':
         for y in range(frame.shape[0]):
-            last_valid_pixels = []
-            for x in range(frame.shape[1] - 1, -1, -1):
+            for x in range(frame.shape[1] - 2, -1, -1):
                 if mask[y, x]:
-                    if last_valid_pixels:
-                        # Fill the hole with the last valid pixels
-                        for offset in range(len(last_valid_pixels)):
-                            if x + 1 + offset < frame.shape[1]:
-                                frame[y, x + 1 + offset] = last_valid_pixels[offset]
-                else:
-                    last_valid_pixels.insert(0, frame[y, x].copy())
-                    if len(last_valid_pixels) > frame.shape[1]:
-                        last_valid_pixels.pop()
+                    frame[y, x] = frame[y, x + 1]  # Fill from the right
 
     return frame
 
