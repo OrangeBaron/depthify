@@ -44,24 +44,29 @@ def inpaint_horizontal(frame, direction):
         Inpainted frame.
     """
     mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
-    height, width, _ = frame.shape
 
     if direction == 'left':
-        for y in range(height):
-            last_valid = None
-            for x in range(width):
-                if not mask[y, x]:
-                    last_valid = frame[y, x]
-                elif last_valid is not None:
-                    frame[y, x] = last_valid
+        for y in range(frame.shape[0]):
+            last_valid_pixels = None
+            for x in range(frame.shape[1]):
+                if mask[y, x]:
+                    if last_valid_pixels is not None:
+                        frame[y, x] = last_valid_pixels[(x - len(last_valid_pixels)) % len(last_valid_pixels)]
+                else:
+                    if last_valid_pixels is None:
+                        last_valid_pixels = []
+                    last_valid_pixels.append(frame[y, x].copy())
     elif direction == 'right':
-        for y in range(height):
-            last_valid = None
-            for x in range(width - 1, -1, -1):
-                if not mask[y, x]:
-                    last_valid = frame[y, x]
-                elif last_valid is not None:
-                    frame[y, x] = last_valid
+        for y in range(frame.shape[0]):
+            last_valid_pixels = None
+            for x in range(frame.shape[1] - 1, -1, -1):
+                if mask[y, x]:
+                    if last_valid_pixels is not None:
+                        frame[y, x] = last_valid_pixels[(len(last_valid_pixels) - (frame.shape[1] - x)) % len(last_valid_pixels)]
+                else:
+                    if last_valid_pixels is None:
+                        last_valid_pixels = []
+                    last_valid_pixels.insert(0, frame[y, x].copy())
 
     return frame
 
