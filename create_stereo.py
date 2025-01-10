@@ -58,32 +58,14 @@ def inpaint_horizontal(frame, direction):
 
     if direction == 'left':
         for y in range(frame.shape[0]):
-            hole_start = None
-            for x in range(frame.shape[1]):
+            for x in range(1, frame.shape[1]):
                 if mask[y, x]:
-                    if hole_start is None:
-                        hole_start = x
-                elif hole_start is not None:
-                    hole_end = x
-                    hole_width = hole_end - hole_start
-                    for i in range(hole_width):
-                        if hole_start - 1 - i >= 0:  # Ensure we don't go out of bounds
-                            frame[y, hole_start + i] = frame[y, hole_start - 1 - i]
-                    hole_start = None
+                    frame[y, x] = frame[y, x - 1]  # Fill from the left
     elif direction == 'right':
         for y in range(frame.shape[0]):
-            hole_end = None
-            for x in range(frame.shape[1] - 1, -1, -1):
+            for x in range(frame.shape[1] - 2, -1, -1):
                 if mask[y, x]:
-                    if hole_end is None:
-                        hole_end = x
-                elif hole_end is not None:
-                    hole_start = x
-                    hole_width = hole_end - hole_start
-                    for i in range(hole_width):
-                        if hole_end + 1 + i < frame.shape[1]:  # Ensure we don't go out of bounds
-                            frame[y, hole_end - i] = frame[y, hole_end + 1 + i]
-                    hole_end = None
+                    frame[y, x] = frame[y, x + 1]  # Fill from the right
 
     return frame
 
@@ -109,8 +91,8 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
         # Inpaint missing areas
-        left_frame = inpaint_horizontal(left_frame, direction='left')
-        right_frame = inpaint_horizontal(right_frame, direction='right')
+        """left_frame = inpaint_horizontal(left_frame, direction='left')
+        right_frame = inpaint_horizontal(right_frame, direction='right')"""
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
