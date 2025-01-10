@@ -46,58 +46,39 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def inpaint_horizontal_sectors(frame, direction):
-    """Inpaint missing areas in the frame by identifying and filling sectors.
+def identify_and_fill_sectors(frame, direction):
+    """Identify and fill sectors (regions) of black pixels for inpainting.
     Args:
-        frame: The frame with missing areas (holes).
-        direction: Direction of inpainting ('left' or 'right').
+        frame: The frame to process.
+        direction: Direction of inpainting ('left' for left eye, 'right' for right eye).
     Returns:
-        Inpainted frame with identified sectors filled in blue.
+        Frame with sectors filled with blue (0, 0, 255).
     """
     height, width, _ = frame.shape
-    mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
-
-    if direction == 'left':
-        for y in range(height):
-            sector_start = None
-            for x in range(width):
-                if mask[y, x]:
-                    if sector_start is None:
-                        sector_start = x
-                elif sector_start is not None:
-                    # Check the size of the sector and neighboring colored pixels
-                    black_length = x - sector_start
-                    color_length = 0
-                    for i in range(x, min(x + black_length, width)):
-                        if not mask[y, i]:
-                            color_length += 1
-                        else:
+    for y in range(height):
+        sector_start = -1
+        for x in (range(width) if direction == 'left' else range(width - 1, -1, -1)):
+            if np.all(frame[y, x] == [0, 0, 0]):  # Black pixel
+                if sector_start == -1:
+                    sector_start = x  # Start a new sector
+            else:  # Colored pixel
+                if sector_start != -1:  # Inside a sector
+                    # Check if the sector should end here
+                    consecutive_colored = 0
+                    consecutive_black = 0
+                    scan_range = range(x, width) if direction == 'left' else range(x, -1, -1)
+                    for scan_x in scan_range:
+                        if np.all(frame[y, scan_x] == [0, 0, 0]):
+                            consecutive_black += 1
                             break
-                    if color_length > black_length:
-                        # End the sector before the first colored pixel
-                        frame[y, sector_start:x] = [0, 0, 255]  # Fill sector in blue
-                        sector_start = None
-    elif direction == 'right':
-        for y in range(height):
-            sector_start = None
-            for x in range(width - 1, -1, -1):
-                if mask[y, x]:
-                    if sector_start is None:
-                        sector_start = x
-                elif sector_start is not None:
-                    # Check the size of the sector and neighboring colored pixels
-                    black_length = sector_start - x
-                    color_length = 0
-                    for i in range(x, max(x - black_length, -1), -1):
-                        if not mask[y, i]:
-                            color_length += 1
                         else:
-                            break
-                    if color_length > black_length:
-                        # End the sector before the first colored pixel
-                        frame[y, x + 1:sector_start + 1] = [0, 0, 255]  # Fill sector in blue
-                        sector_start = None
-
+                            consecutive_colored += 1
+                    
+                    if consecutive_colored > consecutive_black:  # End the sector
+                        frame[y, sector_start:x + 1] = [0, 0, 255]  # Fill sector with blue
+                        sector_start = -1  # Reset sector
+                    else:
+                        continue  # Continue the sector
     return frame
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
@@ -121,9 +102,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Inpaint missing areas by filling sectors
-        left_frame = inpaint_horizontal_sectors(left_frame, direction='left')
-        right_frame = inpaint_horizontal_sectors(right_frame, direction='right')
+        # Identify and fill sectors
+        left_frame = identify_and_fill_sectors(left_frame, direction='left')
+        right_frame = identify_and_fill_sectors(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
