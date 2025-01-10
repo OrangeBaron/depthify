@@ -56,12 +56,14 @@ def inpaint_horizontal(frame, direction):
                     else:
                         fill_pixels = frame[y, macro_hole_end + 1:min(width, macro_hole_end + 1 + black_count)]
 
-                    # Fill the macro-hole
-                    for i in range(black_count):
-                        if direction == 'left':
-                            frame[y, macro_hole_start + i] = fill_pixels[i % len(fill_pixels)]
-                        else:
-                            frame[y, macro_hole_end - i] = fill_pixels[i % len(fill_pixels)]
+                    # Ensure there are pixels to fill with
+                    if len(fill_pixels) > 0:
+                        # Fill the macro-hole
+                        for i in range(black_count):
+                            if direction == 'left':
+                                frame[y, macro_hole_start + i] = fill_pixels[i % len(fill_pixels)]
+                            else:
+                                frame[y, macro_hole_end - i] = fill_pixels[i % len(fill_pixels)]
 
             else:
                 x += step
