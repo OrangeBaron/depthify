@@ -15,6 +15,54 @@ def preprocess_rgb_frame(frame):
     frame[black_pixel_mask] = [1, 0, 0]  # Replace pure black pixels with almost black
     return frame
 
+def find_and_fill_sectors(frame, direction):
+    """Find and fill black sectors in the frame for inpainting.
+    Args:
+        frame: The frame with missing areas (holes).
+        direction: Direction of inpainting ('left' or 'right').
+    Returns:
+        Frame with inpainted sectors.
+    """
+    height, width, _ = frame.shape
+
+    for y in range(height):
+        x = 0 if direction == 'left' else width - 1
+        while (0 <= x < width):
+            # Find start of black sector
+            if np.all(frame[y, x] == [0, 0, 0]):
+                start = x
+                # Measure length of black sector
+                while (0 <= x < width) and np.all(frame[y, x] == [0, 0, 0]):
+                    x += 1 if direction == 'left' else -1
+                end_provisional = x
+
+                # Measure length of following non-black sector
+                non_black_start = x
+                while (0 <= x < width) and not np.all(frame[y, x] == [0, 0, 0]):
+                    x += 1 if direction == 'left' else -1
+                non_black_end = x
+
+                black_length = abs(end_provisional - start)
+                non_black_length = abs(non_black_end - non_black_start)
+
+                if non_black_length >= black_length:
+                    end = end_provisional
+                else:
+                    continue
+
+                # Fill the sector
+                fill_start = start - black_length if direction == 'left' else start + black_length
+                if 0 <= fill_start < width:
+                    fill_pixels = frame[y, fill_start:fill_start + black_length] if direction == 'left' else frame[y, fill_start - black_length:fill_start]
+                    fill_pixels = fill_pixels[::-1] if direction == 'right' else fill_pixels
+
+                    if len(fill_pixels) == black_length:
+                        frame[y, start:end] = fill_pixels
+            else:
+                x += 1 if direction == 'left' else -1
+
+    return frame
+
 def create_parallax_frame(rgb_frame, depth_map, layers, factor):
     """Create a single frame with parallax effect for one eye."""
     height, width, _ = rgb_frame.shape
@@ -46,79 +94,6 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def identify_and_fill_sectors(frame, direction):
-    """Identify and fill sectors of black pixels for inpainting.
-    Args:
-        frame: The frame to inpaint.
-        direction: Direction for inpainting ('left' or 'right').
-    Returns:
-        Inpainted frame.
-    """
-    height, width, _ = frame.shape
-    mask = np.all(frame == 0, axis=2)  # Find black (hole) pixels
-
-    if direction == 'left':
-        for y in range(height):
-            x = 0
-            while x < width:
-                # Start of a sector
-                if mask[y, x]:
-                    start = x
-                    while x < width and mask[y, x]:
-                        x += 1
-                    end_provisional = x
-
-                    # Analyze subsequent non-black pixels
-                    non_black_count = 0
-                    while x < width and not mask[y, x]:
-                        x += 1
-                        non_black_count += 1
-
-                    # Check if the non-black series is longer than the black series
-                    black_count = end_provisional - start
-                    if non_black_count > black_count:
-                        end = end_provisional
-                        # Fill the sector by replicating preceding pixels
-                        if start - black_count >= 0:
-                            segment_to_copy = frame[y, start - black_count:start]
-                            frame[y, start:end] = segment_to_copy[:end - start]
-                    else:
-                        # Continue to the next black sector
-                        continue
-                x += 1
-
-    elif direction == 'right':
-        for y in range(height):
-            x = width - 1
-            while x >= 0:
-                # Start of a sector
-                if mask[y, x]:
-                    start = x
-                    while x >= 0 and mask[y, x]:
-                        x -= 1
-                    end_provisional = x
-
-                    # Analyze subsequent non-black pixels
-                    non_black_count = 0
-                    while x >= 0 and not mask[y, x]:
-                        x -= 1
-                        non_black_count += 1
-
-                    # Check if the non-black series is longer than the black series
-                    black_count = start - end_provisional
-                    if non_black_count > black_count:
-                        end = end_provisional
-                        # Fill the sector by replicating following pixels
-                        if start + black_count < width:
-                            segment_to_copy = frame[y, start + 1:start + 1 + black_count]
-                            frame[y, end + 1:start + 1] = segment_to_copy[-(start - end):]
-                    else:
-                        # Continue to the next black sector
-                        continue
-                x -= 1
-
-    return frame
-
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     """Process all frames to create stereoscopic video."""
     rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
@@ -141,8 +116,8 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
         # Inpaint missing areas
-        left_frame = identify_and_fill_sectors(left_frame, direction='left')
-        right_frame = identify_and_fill_sectors(right_frame, direction='right')
+        left_frame = find_and_fill_sectors(left_frame, direction='left')
+        right_frame = find_and_fill_sectors(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
