@@ -58,39 +58,36 @@ def inpaint_horizontal(frame, direction):
 
     for y in range(height):
         x = 0 if direction == 'left' else width - 1
-        step = 1 if direction == 'left' else -1
+        while (0 <= x < width):
+            # Find start of a black pixel sector
+            if np.all(frame[y, x] == [0, 0, 0]):
+                sector_start = x
 
-        last_non_black_segment = []
-        current_black_segment = []
-        longest_black_segment_length = 0
+                # Count length of black pixel sector
+                while (0 <= x < width) and np.all(frame[y, x] == [0, 0, 0]):
+                    x += 1 if direction == 'left' else -1
+                sector_end = x - 1 if direction == 'left' else x + 1
 
-        while 0 <= x < width:
-            if np.all(frame[y, x] == 0):  # Black pixel
-                current_black_segment.append(x)
-            else:  # Non-black pixel
-                if current_black_segment:
-                    # Check if the black segment ends here
-                    if len(current_black_segment) > longest_black_segment_length:
-                        # End the black sector
-                        start = current_black_segment[0]
-                        end = current_black_segment[-1]
-                        sector_width = end - start + 1
+                # Count length of the following non-black pixel sector
+                non_black_start = x
+                while (0 <= x < width) and not np.all(frame[y, x] == [0, 0, 0]):
+                    x += 1 if direction == 'left' else -1
+                non_black_end = x - 1 if direction == 'left' else x + 1
 
-                        # Ensure enough non-black pixels to repeat
-                        if len(last_non_black_segment) >= sector_width:
-                            for i, px in enumerate(range(start, end + 1)):
-                                frame[y, px] = last_non_black_segment[-sector_width + i]
+                black_length = abs(sector_end - sector_start) + 1
+                non_black_length = abs(non_black_end - non_black_start) + 1
 
-                    # Update the longest black segment length
-                    longest_black_segment_length = len(current_black_segment)
-                    current_black_segment = []
+                # If the non-black sector is longer, fill the black sector
+                if non_black_length > black_length:
+                    if direction == 'left':
+                        fill_values = frame[y, max(0, sector_start - black_length):sector_start]
+                    else:
+                        fill_values = frame[y, sector_start + 1:sector_start + 1 + black_length]
 
-                # Update the last non-black segment
-                last_non_black_segment.append(frame[y, x])
-                if len(last_non_black_segment) > longest_black_segment_length:
-                    last_non_black_segment.pop(0)
-
-            x += step
+                    if len(fill_values) == black_length:
+                        frame[y, sector_start:sector_start + black_length] = fill_values[::-1] if direction == 'right' else fill_values
+            else:
+                x += 1 if direction == 'left' else -1
 
     return frame
 
