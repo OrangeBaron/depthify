@@ -73,7 +73,7 @@ def inpaint_horizontal_sectors(frame, direction):
                             color_length += 1
                         else:
                             break
-                    if color_length >= black_length:
+                    if color_length > black_length:
                         # End the sector before the first colored pixel
                         frame[y, sector_start:x] = [0, 0, 255]  # Fill sector in blue
                         sector_start = None
@@ -93,7 +93,7 @@ def inpaint_horizontal_sectors(frame, direction):
                             color_length += 1
                         else:
                             break
-                    if color_length >= black_length:
+                    if color_length > black_length:
                         # End the sector before the first colored pixel
                         frame[y, x + 1:sector_start + 1] = [0, 0, 255]  # Fill sector in blue
                         sector_start = None
