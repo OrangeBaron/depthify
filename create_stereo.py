@@ -15,69 +15,78 @@ def preprocess_rgb_frame(frame):
     frame[black_pixel_mask] = [1, 0, 0]  # Replace pure black pixels with almost black
     return frame
 
-def identify_and_fill_sectors(frame, direction):
-    """Identify sectors of black pixels and fill them with almost black.
+def inpaint_horizontal(frame, direction):
+    """Inpaint missing areas in the frame horizontally using sector-based filling.
     Args:
-        frame: The frame to process.
-        direction: Direction of processing ('left' or 'right').
+        frame: The frame with missing areas (holes).
+        direction: Direction of inpainting ('left' or 'right').
     Returns:
-        Processed frame with sectors filled.
+        Inpainted frame.
     """
     height, width, _ = frame.shape
+
     if direction == 'left':
         for y in range(height):
-            sector_start = None
-            sector_end = None
-            last_black_length = 0
             x = 0
             while x < width:
-                if np.all(frame[y, x] == [0, 0, 0]):
-                    if sector_start is None:
-                        sector_start = x
+                if np.all(frame[y, x] == 0):  # Start of a black pixel sector
+                    sector_start = x
                     sector_end = x
-                    last_black_length += 1
-                else:
+                    last_black_length = 0
+
+                    while x < width and np.all(frame[y, x] == 0):
+                        sector_end = x
+                        last_black_length += 1
+                        x += 1
+
+                    # Count non-black pixels that follow
                     next_color_length = 0
-                    while x < width and not np.all(frame[y, x] == [0, 0, 0]):
+                    while x < width and not np.all(frame[y, x] == 0):
                         next_color_length += 1
                         x += 1
+
                     if next_color_length > last_black_length:
-                        if sector_start is not None and sector_end is not None:
-                            frame[y, sector_start:sector_end + 1] = [1, 0, 0]
-                        sector_start = None
-                        sector_end = None
-                        last_black_length = 0
+                        # Fill the sector with the last non-black pixels
+                        if sector_start > 0:
+                            fill_value = frame[y, sector_start - 1]
+                            frame[y, sector_start:sector_end + 1] = fill_value
                     else:
+                        # Skip this sector
                         last_black_length = 0
-                        continue
-                x += 1
+                else:
+                    x += 1
+
     elif direction == 'right':
         for y in range(height):
-            sector_start = None
-            sector_end = None
-            last_black_length = 0
             x = width - 1
             while x >= 0:
-                if np.all(frame[y, x] == [0, 0, 0]):
-                    if sector_start is None:
-                        sector_start = x
+                if np.all(frame[y, x] == 0):  # Start of a black pixel sector
+                    sector_start = x
                     sector_end = x
-                    last_black_length += 1
-                else:
+                    last_black_length = 0
+
+                    while x >= 0 and np.all(frame[y, x] == 0):
+                        sector_end = x
+                        last_black_length += 1
+                        x -= 1
+
+                    # Count non-black pixels that precede
                     next_color_length = 0
-                    while x >= 0 and not np.all(frame[y, x] == [0, 0, 0]):
+                    while x >= 0 and not np.all(frame[y, x] == 0):
                         next_color_length += 1
                         x -= 1
+
                     if next_color_length > last_black_length:
-                        if sector_start is not None and sector_end is not None:
-                            frame[y, sector_end:sector_start + 1] = [1, 0, 0]
-                        sector_start = None
-                        sector_end = None
-                        last_black_length = 0
+                        # Fill the sector with the next non-black pixels
+                        if sector_end < width - 1:
+                            fill_value = frame[y, sector_end + 1]
+                            frame[y, sector_start:sector_end + 1] = fill_value
                     else:
+                        # Skip this sector
                         last_black_length = 0
-                        continue
-                x -= 1
+                else:
+                    x -= 1
+
     return frame
 
 def create_parallax_frame(rgb_frame, depth_map, layers, factor):
@@ -132,9 +141,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Identify and fill sectors
-        left_frame = identify_and_fill_sectors(left_frame, direction='left')
-        right_frame = identify_and_fill_sectors(right_frame, direction='right')
+        # Inpaint missing areas
+        left_frame = inpaint_horizontal(left_frame, direction='left')
+        right_frame = inpaint_horizontal(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
