@@ -4,6 +4,17 @@ import numpy as np
 import argparse
 from tqdm import tqdm
 
+def preprocess_rgb_frame(frame):
+    """Preprocess the RGB frame to avoid confusion between black pixels and holes.
+    Args:
+        frame: The RGB frame to preprocess.
+    Returns:
+        Preprocessed RGB frame where black pixels are replaced with (1, 0, 0).
+    """
+    black_pixel_mask = np.all(frame == [0, 0, 0], axis=2)
+    frame[black_pixel_mask] = [1, 0, 0]  # Replace pure black pixels with almost black
+    return frame
+
 def create_parallax_frame(rgb_frame, depth_map, layers, factor):
     """Create a single frame with parallax effect for one eye."""
     height, width, _ = rgb_frame.shape
@@ -47,14 +58,30 @@ def inpaint_horizontal(frame, direction):
 
     if direction == 'left':
         for y in range(frame.shape[0]):
-            for x in range(1, frame.shape[1]):
+            hole_start = None
+            for x in range(frame.shape[1]):
                 if mask[y, x]:
-                    frame[y, x] = frame[y, x - 1]  # Fill from the left
+                    if hole_start is None:
+                        hole_start = x
+                elif hole_start is not None:
+                    hole_end = x
+                    hole_width = hole_end - hole_start
+                    for i in range(hole_width):
+                        frame[y, hole_start + i] = frame[y, hole_start - 1 - i]
+                    hole_start = None
     elif direction == 'right':
         for y in range(frame.shape[0]):
-            for x in range(frame.shape[1] - 2, -1, -1):
+            hole_end = None
+            for x in range(frame.shape[1] - 1, -1, -1):
                 if mask[y, x]:
-                    frame[y, x] = frame[y, x + 1]  # Fill from the right
+                    if hole_end is None:
+                        hole_end = x
+                elif hole_end is not None:
+                    hole_start = x
+                    hole_width = hole_end - hole_start
+                    for i in range(hole_width):
+                        frame[y, hole_end - i] = frame[y, hole_end + 1 + i]
+                    hole_end = None
 
     return frame
 
@@ -68,8 +95,11 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     os.makedirs(output_dir, exist_ok=True)
 
     for idx, (rgb_file, depth_file) in enumerate(tqdm(zip(rgb_files, depth_files), total=len(rgb_files), desc="Processing frames")):
-        # Load RGB frame and depth map
+        # Load and preprocess RGB frame
         rgb_frame = cv2.imread(os.path.join(rgb_dir, rgb_file))
+        rgb_frame = preprocess_rgb_frame(rgb_frame)
+
+        # Load depth map
         depth_map = cv2.imread(os.path.join(depth_dir, depth_file), cv2.IMREAD_UNCHANGED)
 
         # Create parallax frames for left and right eyes
