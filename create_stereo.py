@@ -46,20 +46,8 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def fill_sector(frame, start_x, end_x, y):
-    """Fill a sector in the frame by repeating the last pixel to the left of the sector.
-    Args:
-        frame: The frame to modify.
-        start_x: Starting x-coordinate of the sector.
-        end_x: Ending x-coordinate of the sector.
-        y: Row index.
-    """
-    if start_x > 0:
-        fill_value = frame[y, start_x - 1]
-        frame[y, start_x:end_x + 1] = fill_value
-
 def inpaint_horizontal(frame, direction):
-    """Inpaint missing areas in the frame horizontally by identifying and filling sectors.
+    """Inpaint missing areas in the frame by sectors.
     Args:
         frame: The frame with missing areas (holes).
         direction: Direction of inpainting ('left' or 'right').
@@ -67,25 +55,30 @@ def inpaint_horizontal(frame, direction):
         Inpainted frame.
     """
     height, width, _ = frame.shape
+    mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
 
     if direction == 'left':
         for y in range(height):
             x = 0
             while x < width:
-                if np.all(frame[y, x] == 0):
-                    # Start of a potential sector
-                    start_x = x
-                    while x < width and np.all(frame[y, x] == 0):
+                # Identify a sector
+                if mask[y, x]:
+                    sector_start = x
+                    while x < width and mask[y, x]:
                         x += 1
-                    # Check for termination condition: sequence of black pixels followed by non-black pixels
-                    if x < width:
-                        next_colored_x = x
-                        while next_colored_x < width and not np.all(frame[y, next_colored_x] == 0):
-                            next_colored_x += 1
-                        if next_colored_x - x > x - start_x:
-                            # Sector identified
-                            fill_sector(frame, start_x, x - 1, y)
-                        x = next_colored_x
+                    sector_end = x
+
+                    # Check if the sector is valid for inpainting
+                    if sector_end < width:
+                        color_series_end = sector_end
+                        while color_series_end < width and not mask[y, color_series_end]:
+                            color_series_end += 1
+
+                        if (color_series_end - sector_end) > (sector_end - sector_start):
+                            # Fill the sector
+                            fill_color = frame[y, sector_start - 1] if sector_start > 0 else None
+                            if fill_color is not None:
+                                frame[y, sector_start:sector_end] = fill_color
                 else:
                     x += 1
 
@@ -93,20 +86,24 @@ def inpaint_horizontal(frame, direction):
         for y in range(height):
             x = width - 1
             while x >= 0:
-                if np.all(frame[y, x] == 0):
-                    # Start of a potential sector
-                    end_x = x
-                    while x >= 0 and np.all(frame[y, x] == 0):
+                # Identify a sector
+                if mask[y, x]:
+                    sector_end = x
+                    while x >= 0 and mask[y, x]:
                         x -= 1
-                    # Check for termination condition: sequence of black pixels followed by non-black pixels
-                    if x >= 0:
-                        prev_colored_x = x
-                        while prev_colored_x >= 0 and not np.all(frame[y, prev_colored_x] == 0):
-                            prev_colored_x -= 1
-                        if end_x - x > x - prev_colored_x:
-                            # Sector identified
-                            fill_sector(frame, x + 1, end_x, y)
-                        x = prev_colored_x
+                    sector_start = x
+
+                    # Check if the sector is valid for inpainting
+                    if sector_start >= 0:
+                        color_series_start = sector_start
+                        while color_series_start >= 0 and not mask[y, color_series_start]:
+                            color_series_start -= 1
+
+                        if (sector_end - sector_start) > (sector_start - color_series_start):
+                            # Fill the sector
+                            fill_color = frame[y, sector_end + 1] if sector_end < width - 1 else None
+                            if fill_color is not None:
+                                frame[y, sector_start + 1:sector_end + 1] = fill_color
                 else:
                     x -= 1
 
