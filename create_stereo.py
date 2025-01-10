@@ -52,12 +52,14 @@ def find_and_fill_sectors(frame, direction):
 
                 # Fill the sector
                 fill_start = start - black_length if direction == 'left' else start + black_length
-                if 0 <= fill_start < width:
-                    fill_pixels = frame[y, fill_start:fill_start + black_length] if direction == 'left' else frame[y, fill_start - black_length:fill_start]
+                fill_end = fill_start + black_length if direction == 'left' else fill_start - black_length
+
+                if 0 <= fill_start < width and 0 <= fill_end < width:
+                    fill_pixels = frame[y, fill_start:fill_start + black_length] if direction == 'left' else frame[y, fill_end:fill_end + black_length]
                     fill_pixels = fill_pixels[::-1] if direction == 'right' else fill_pixels
 
                     if len(fill_pixels) == black_length:
-                        frame[y, start:end] = fill_pixels
+                        frame[y, start:end] = fill_pixels[:(end - start)]
             else:
                 x += 1 if direction == 'left' else -1
 
