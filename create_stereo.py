@@ -80,7 +80,8 @@ def identify_and_fill_sectors(frame, direction):
                         end = end_provisional
                         # Fill the sector by replicating preceding pixels
                         if start - black_count >= 0:
-                            frame[y, start:end] = frame[y, start - black_count:start]
+                            segment_to_copy = frame[y, start - black_count:start]
+                            frame[y, start:end] = segment_to_copy[:end - start]
                     else:
                         # Continue to the next black sector
                         continue
@@ -109,7 +110,8 @@ def identify_and_fill_sectors(frame, direction):
                         end = end_provisional
                         # Fill the sector by replicating following pixels
                         if start + black_count < width:
-                            frame[y, end:start + 1] = frame[y, start + 1:start + 1 + black_count]
+                            segment_to_copy = frame[y, start + 1:start + 1 + black_count]
+                            frame[y, end + 1:start + 1] = segment_to_copy[-(start - end):]
                     else:
                         # Continue to the next black sector
                         continue
