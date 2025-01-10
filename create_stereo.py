@@ -47,52 +47,75 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
     return parallax_frame
 
 def identify_and_fill_sectors(frame, direction):
-    """Identify sectors with missing data and fill them.
+    """Identify and fill sectors of black pixels for inpainting.
     Args:
-        frame: The frame with missing areas (holes).
-        direction: Direction for processing ('left' for left eye, 'right' for right eye).
+        frame: The frame to inpaint.
+        direction: Direction for inpainting ('left' or 'right').
     Returns:
-        Frame with sectors filled.
+        Inpainted frame.
     """
     height, width, _ = frame.shape
-    filled_frame = frame.copy()
+    mask = np.all(frame == 0, axis=2)  # Find black (hole) pixels
 
-    for y in range(height):
-        x = 0 if direction == 'left' else width - 1
-        step = 1 if direction == 'left' else -1
-
-        while 0 <= x < width:
-            if np.all(filled_frame[y, x] == [0, 0, 0]):
+    if direction == 'left':
+        for y in range(height):
+            x = 0
+            while x < width:
                 # Start of a sector
-                sector_start = x
-                while 0 <= x < width and np.all(filled_frame[y, x] == [0, 0, 0]):
-                    x += step
-                sector_end = x - step
+                if mask[y, x]:
+                    start = x
+                    while x < width and mask[y, x]:
+                        x += 1
+                    end_provisional = x
 
-                # Measure non-black pixels after the sector
-                non_black_length = 0
-                while 0 <= x < width and not np.all(filled_frame[y, x] == [0, 0, 0]):
-                    non_black_length += 1
-                    x += step
+                    # Analyze subsequent non-black pixels
+                    non_black_count = 0
+                    while x < width and not mask[y, x]:
+                        x += 1
+                        non_black_count += 1
 
-                # Validate sector end
-                sector_length = abs(sector_end - sector_start) + 1
-                if non_black_length > sector_length:
-                    # Valid sector, fill it
-                    sample_start = max(0, sector_start - sector_length) if direction == 'left' else min(width - 1, sector_end + sector_length)
-                    sample = filled_frame[y, sample_start:sample_start + sector_length:step]
-                    if len(sample) > 0:  # Ensure sample is not empty
-                        for i in range(sector_length):
-                            fill_x = sector_start + i * step
-                            if 0 <= fill_x < width:
-                                filled_frame[y, fill_x] = sample[i % len(sample)]
-                else:
-                    # Skip the sector, not enough non-black pixels to validate
-                    continue
+                    # Check if the non-black series is longer than the black series
+                    black_count = end_provisional - start
+                    if non_black_count > black_count:
+                        end = end_provisional
+                        # Fill the sector by replicating preceding pixels
+                        if start - black_count >= 0:
+                            frame[y, start:end] = frame[y, start - black_count:start]
+                    else:
+                        # Continue to the next black sector
+                        continue
+                x += 1
 
-            x += step
+    elif direction == 'right':
+        for y in range(height):
+            x = width - 1
+            while x >= 0:
+                # Start of a sector
+                if mask[y, x]:
+                    start = x
+                    while x >= 0 and mask[y, x]:
+                        x -= 1
+                    end_provisional = x
 
-    return filled_frame
+                    # Analyze subsequent non-black pixels
+                    non_black_count = 0
+                    while x >= 0 and not mask[y, x]:
+                        x -= 1
+                        non_black_count += 1
+
+                    # Check if the non-black series is longer than the black series
+                    black_count = start - end_provisional
+                    if non_black_count > black_count:
+                        end = end_provisional
+                        # Fill the sector by replicating following pixels
+                        if start + black_count < width:
+                            frame[y, end:start + 1] = frame[y, start + 1:start + 1 + black_count]
+                    else:
+                        # Continue to the next black sector
+                        continue
+                x -= 1
+
+    return frame
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     """Process all frames to create stereoscopic video."""
@@ -115,7 +138,7 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Identify and fill sectors
+        # Inpaint missing areas
         left_frame = identify_and_fill_sectors(left_frame, direction='left')
         right_frame = identify_and_fill_sectors(right_frame, direction='right')
 
