@@ -58,9 +58,11 @@ def inpaint_horizontal(frame, direction):
     for y in range(height):
         in_sector = False
         sector_start = None
-        last_black_length = 0
+        sector_close = None
 
-        for x in range(width if direction == 'left' else -1, -1 if direction == 'left' else width, -1 if direction == 'right' else 1):
+        x_range = range(width) if direction == 'left' else range(width - 1, -1, -1)
+
+        for x in x_range:
             current_pixel = frame[y, x]
             is_black = np.all(current_pixel == [0, 0, 0])
 
@@ -69,28 +71,30 @@ def inpaint_horizontal(frame, direction):
                     # Start a new sector
                     in_sector = True
                     sector_start = x
-                    last_black_length = 1
+                    sector_close = x
                 else:
-                    # Extend the current sector
-                    last_black_length += 1
+                    # Extend the sector
+                    sector_close = x
             else:
                 if in_sector:
                     # Non-black pixel encountered inside a sector
-                    non_black_length = 1
-                    for nx in range(x + (1 if direction == 'left' else -1), width if direction == 'left' else -1, 1 if direction == 'left' else -1):
-                        if np.all(frame[y, nx] != [0, 0, 0]):
-                            non_black_length += 1
-                        else:
-                            break
+                    non_black_start = x
+                    while x in x_range and np.all(frame[y, x] != [0, 0, 0]):
+                        x += 1
+                    non_black_length = x - non_black_start
 
-                    if non_black_length > last_black_length:
+                    if non_black_length > (sector_close - sector_start + 1):
                         # Close the sector
-                        frame[y, sector_start:x + 1] = [0, 0, 255]  # Fill with blue
+                        frame[y, sector_start:sector_close + 1] = [0, 0, 255]  # Fill with blue
                         in_sector = False
                     else:
-                        # Extend the sector
-                        last_black_length = 0
-                        x = nx - (1 if direction == 'left' else -1)  # Update the current position
+                        # Extend the sector and skip the non-black pixels
+                        sector_close = x - 1
+                        continue
+
+        if in_sector:
+            # Finalize any open sector at the end of the row
+            frame[y, sector_start:sector_close + 1] = [0, 0, 255]
 
     return frame
 
