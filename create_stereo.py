@@ -15,6 +15,59 @@ def preprocess_rgb_frame(frame):
     frame[black_pixel_mask] = [1, 0, 0]  # Replace pure black pixels with almost black
     return frame
 
+def inpaint_horizontal(frame, direction):
+    """Inpaint missing areas in the frame horizontally using macro-holes.
+    Args:
+        frame: The frame with missing areas (holes).
+        direction: Direction of inpainting ('left' or 'right').
+    Returns:
+        Inpainted frame.
+    """
+    height, width, _ = frame.shape
+
+    for y in range(height):
+        x = 0 if direction == 'left' else width - 1
+        step = 1 if direction == 'left' else -1
+
+        while 0 <= x < width:
+            if np.all(frame[y, x] == 0):  # Found the start of a hole
+                start = x
+                black_count = 0
+                valid_count = 0
+
+                # Count consecutive black pixels
+                while 0 <= x < width and np.all(frame[y, x] == 0):
+                    black_count += 1
+                    x += step
+
+                # Count consecutive valid pixels
+                while 0 <= x < width and not np.all(frame[y, x] == 0):
+                    valid_count += 1
+                    x += step
+
+                # Define macro-hole boundary
+                if valid_count > black_count:
+                    macro_hole_end = x - step
+                    macro_hole_start = start
+
+                    # Get the valid pixels to the left (or right) of the hole
+                    if direction == 'left':
+                        fill_pixels = frame[y, max(0, macro_hole_start - black_count):macro_hole_start]
+                    else:
+                        fill_pixels = frame[y, macro_hole_end + 1:min(width, macro_hole_end + 1 + black_count)]
+
+                    # Fill the macro-hole
+                    for i in range(black_count):
+                        if direction == 'left':
+                            frame[y, macro_hole_start + i] = fill_pixels[i % len(fill_pixels)]
+                        else:
+                            frame[y, macro_hole_end - i] = fill_pixels[i % len(fill_pixels)]
+
+            else:
+                x += step
+
+    return frame
+
 def create_parallax_frame(rgb_frame, depth_map, layers, factor):
     """Create a single frame with parallax effect for one eye."""
     height, width, _ = rgb_frame.shape
@@ -46,59 +99,6 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def inpaint_horizontal_macro(frame, direction):
-    """Inpaint missing areas in the frame using macro-hole filling.
-    Args:
-        frame: The frame with missing areas (holes).
-        direction: Direction of inpainting ('left' or 'right').
-    Returns:
-        Inpainted frame.
-    """
-    height, width, _ = frame.shape
-
-    for y in range(height):
-        x = 0 if direction == 'left' else width - 1
-        step = 1 if direction == 'left' else -1
-
-        while 0 <= x < width:
-            if np.all(frame[y, x] == 0):  # Found the start of a hole
-                macro_hole_start = x
-                hole_length = 0
-                valid_length = 0
-
-                # Count consecutive holes
-                while 0 <= x < width and np.all(frame[y, x] == 0):
-                    hole_length += 1
-                    x += step
-
-                # Count consecutive valid pixels
-                valid_start = x
-                while 0 <= x < width and not np.all(frame[y, x] == 0):
-                    valid_length += 1
-                    x += step
-
-                # End the macro-hole if valid_length > hole_length
-                if valid_length > hole_length:
-                    macro_hole_end = macro_hole_start + hole_length * step
-                    macro_hole_end = max(0, min(width - 1, macro_hole_end))
-
-                    # Fill the macro-hole with the last valid sequence
-                    fill_start = macro_hole_start - valid_length * step
-                    fill_start = max(0, min(width - 1, fill_start))
-                    fill_pixels = frame[y, fill_start:fill_start + valid_length * step:step]
-
-                    for fill_idx in range(hole_length):
-                        idx = macro_hole_start + fill_idx * step
-                        if 0 <= idx < width:
-                            frame[y, idx] = fill_pixels[fill_idx % len(fill_pixels)]
-
-                # Skip over valid pixels
-                x = valid_start
-            else:
-                x += step
-
-    return frame
-
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     """Process all frames to create stereoscopic video."""
     rgb_files = sorted([f for f in os.listdir(rgb_dir) if f.endswith('.png') or f.endswith('.jpg')])
@@ -120,9 +120,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Inpaint missing areas using macro-hole filling
-        left_frame = inpaint_horizontal_macro(left_frame, direction='left')
-        right_frame = inpaint_horizontal_macro(right_frame, direction='right')
+        # Inpaint missing areas using macro-holes
+        left_frame = inpaint_horizontal(left_frame, direction='left')
+        right_frame = inpaint_horizontal(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
