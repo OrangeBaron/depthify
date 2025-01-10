@@ -46,68 +46,54 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def inpaint_horizontal(frame, direction):
-    """Inpaint missing areas in the frame by sectors.
+def fill_sectors(frame, direction):
+    """Fill sectors of black pixels with blue.
     Args:
-        frame: The frame with missing areas (holes).
-        direction: Direction of inpainting ('left' or 'right').
+        frame: The frame to process.
+        direction: Direction of traversal ('left' for left-to-right, 'right' for right-to-left).
     Returns:
-        Inpainted frame.
+        Frame with sectors filled with blue (0, 0, 255).
     """
     height, width, _ = frame.shape
-    mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
+    filled_frame = frame.copy()
 
-    if direction == 'left':
-        for y in range(height):
-            x = 0
-            while x < width:
-                # Identify a sector
-                if mask[y, x]:
+    for y in range(height):
+        in_sector = False
+        sector_start = None
+
+        if direction == 'left':
+            x_range = range(width)
+        elif direction == 'right':
+            x_range = range(width - 1, -1, -1)
+
+        for x in x_range:
+            if np.all(filled_frame[y, x] == [0, 0, 0]):  # Black pixel
+                if not in_sector:
+                    in_sector = True
                     sector_start = x
-                    while x < width and mask[y, x]:
-                        x += 1
-                    sector_end = x
+            else:  # Non-black pixel
+                if in_sector:
+                    non_black_start = x
+                    # Check if the current series of non-black pixels ends the sector
+                    black_streak_length = 0
+                    non_black_streak_length = 0
+                    for i in x_range:
+                        if np.all(filled_frame[y, i] == [0, 0, 0]):
+                            black_streak_length += 1
+                            if non_black_streak_length > 0:
+                                break
+                        else:
+                            non_black_streak_length += 1
+                            if black_streak_length > 0:
+                                break
+                    if non_black_streak_length > black_streak_length:
+                        in_sector = False
+                        if direction == 'left':
+                            filled_frame[y, sector_start:non_black_start] = [0, 0, 255]
+                        elif direction == 'right':
+                            filled_frame[y, non_black_start:sector_start + 1] = [0, 0, 255]
 
-                    # Check if the sector is valid for inpainting
-                    if sector_end < width:
-                        color_series_end = sector_end
-                        while color_series_end < width and not mask[y, color_series_end]:
-                            color_series_end += 1
-
-                        if (color_series_end - sector_end) > (sector_end - sector_start):
-                            # Fill the sector
-                            fill_color = frame[y, sector_start - 1] if sector_start > 0 else None
-                            if fill_color is not None:
-                                frame[y, sector_start:sector_end] = fill_color
-                else:
-                    x += 1
-
-    elif direction == 'right':
-        for y in range(height):
-            x = width - 1
-            while x >= 0:
-                # Identify a sector
-                if mask[y, x]:
-                    sector_end = x
-                    while x >= 0 and mask[y, x]:
-                        x -= 1
-                    sector_start = x
-
-                    # Check if the sector is valid for inpainting
-                    if sector_start >= 0:
-                        color_series_start = sector_start
-                        while color_series_start >= 0 and not mask[y, color_series_start]:
-                            color_series_start -= 1
-
-                        if (sector_end - sector_start) > (sector_start - color_series_start):
-                            # Fill the sector
-                            fill_color = frame[y, sector_end + 1] if sector_end < width - 1 else None
-                            if fill_color is not None:
-                                frame[y, sector_start + 1:sector_end + 1] = fill_color
-                else:
-                    x -= 1
-
-    return frame
+    return filled_frame
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     """Process all frames to create stereoscopic video."""
@@ -130,9 +116,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Inpaint missing areas
-        left_frame = inpaint_horizontal(left_frame, direction='left')
-        right_frame = inpaint_horizontal(right_frame, direction='right')
+        # Fill sectors
+        left_frame = fill_sectors(left_frame, direction='left')
+        right_frame = fill_sectors(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
