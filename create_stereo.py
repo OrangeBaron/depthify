@@ -46,13 +46,13 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def inpaint_horizontal_sectors(frame, direction):
-    """Inpaint missing areas in the frame horizontally using sectors.
+def fill_sectors(frame, direction):
+    """Fill sectors of black pixels in the frame based on the direction.
     Args:
-        frame: The frame with missing areas (holes).
-        direction: Direction of inpainting ('left' or 'right').
+        frame: The frame to process.
+        direction: 'left' or 'right' specifying the reading direction.
     Returns:
-        Inpainted frame.
+        Frame with sectors filled.
     """
     height, width, _ = frame.shape
     for y in range(height):
@@ -60,36 +60,43 @@ def inpaint_horizontal_sectors(frame, direction):
         step = 1 if direction == 'left' else -1
 
         while 0 <= x < width:
-            # Identify the start of a sector (first black pixel)
-            if np.all(frame[y, x] == [0, 0, 0]):
-                sector_start = x
+            if np.all(frame[y, x] == [0, 0, 0]):  # Found start of a sector
+                start = x
                 black_count = 0
-
-                # Count consecutive black pixels
                 while 0 <= x < width and np.all(frame[y, x] == [0, 0, 0]):
                     black_count += 1
                     x += step
 
-                # Determine the region to copy from
-                copy_start = sector_start - black_count * step if direction == 'left' else sector_start + black_count * step
-                copy_end = sector_start if direction == 'left' else sector_start + 1
+                non_black_count = 0
+                while 0 <= x < width and not np.all(frame[y, x] == [0, 0, 0]):
+                    non_black_count += 1
+                    x += step
 
-                if 0 <= copy_start < width:
-                    fill_pixels = frame[y, copy_start:copy_end:step]
+                if non_black_count > black_count:  # Sector ends
+                    sector_end = x
+                    sector_width = abs(sector_end - start)
 
-                    # Repeat the pixels to fill the sector
-                    if len(fill_pixels) > 0:
-                        fill_pixels = np.tile(fill_pixels, (black_count, 1))[:black_count]
+                    # Fill the sector with the last valid non-black pixels
+                    fill_start = max(0, start - black_count * step) if direction == 'left' else min(width - 1, start - black_count * step)
+                    fill_pixels = frame[y, fill_start:fill_start + sector_width * step:step]
 
-                        # Apply the filling
-                        if direction == 'left':
-                            frame[y, sector_start:sector_start + black_count] = fill_pixels
-                        else:
-                            frame[y, sector_start - black_count:sector_start] = fill_pixels[::-1]
-            else:
-                x += step
+                    if direction == 'left':
+                        frame[y, start:sector_end] = fill_pixels[::-1]
+                    else:
+                        frame[y, sector_end:start:-1] = fill_pixels
 
+            x += step
     return frame
+
+def inpaint_horizontal(frame, direction):
+    """Inpaint missing areas in the frame horizontally.
+    Args:
+        frame: The frame with missing areas (holes).
+        direction: Direction of inpainting ('left' or 'right').
+    Returns:
+        Inpainted frame.
+    """
+    return fill_sectors(frame, direction)
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     """Process all frames to create stereoscopic video."""
@@ -112,9 +119,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Inpaint missing areas using sectors
-        left_frame = inpaint_horizontal_sectors(left_frame, direction='left')
-        right_frame = inpaint_horizontal_sectors(right_frame, direction='right')
+        # Inpaint missing areas
+        left_frame = inpaint_horizontal(left_frame, direction='left')
+        right_frame = inpaint_horizontal(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
