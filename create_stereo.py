@@ -71,15 +71,15 @@ def inpaint_horizontal(frame, direction):
             else:
                 if sector_start != -1:  # We're inside a sector
                     non_black_streak = 1
-                    while (x + non_black_streak < width if direction == 'left' else x - non_black_streak >= 0):
-                        next_x = x + non_black_streak if direction == 'left' else x - non_black_streak
+                    while (x + non_black_streak < width if direction = 'left' else x - non_black_streak >= 0):
+                        next_x = x + non_black_streak if direction = 'left' else x - non_black_streak
                         if np.all(frame[y, next_x] == [0, 0, 0]):
                             break
                         non_black_streak += 1
 
                     if non_black_streak > black_streak_length:
                         for fill_x in range(sector_start, x):
-                            frame[y, fill_x] = [0, 0, 255] if direction == 'left' else frame[y, x:sector_start:-1] = [0, 0, 255]
+                            frame[y, fill_x] = [0, 0, 255] if direction = 'left' else frame[y, x:sector_start:-1] = [0, 0, 255]
                         sector_start = -1
                         black_streak_length = 0
 
