@@ -46,48 +46,6 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def fill_sectors(frame, direction):
-    """Fill sectors of black pixels in the frame based on the direction.
-    Args:
-        frame: The frame to process.
-        direction: 'left' or 'right' specifying the reading direction.
-    Returns:
-        Frame with sectors filled.
-    """
-    height, width, _ = frame.shape
-    for y in range(height):
-        x = 0 if direction == 'left' else width - 1
-        step = 1 if direction == 'left' else -1
-
-        while 0 <= x < width:
-            if np.all(frame[y, x] == [0, 0, 0]):  # Found start of a sector
-                start = x
-                black_count = 0
-                while 0 <= x < width and np.all(frame[y, x] == [0, 0, 0]):
-                    black_count += 1
-                    x += step
-
-                non_black_count = 0
-                while 0 <= x < width and not np.all(frame[y, x] == [0, 0, 0]):
-                    non_black_count += 1
-                    x += step
-
-                if non_black_count > black_count:  # Sector ends
-                    sector_end = x
-                    sector_width = abs(sector_end - start)
-
-                    # Fill the sector with the last valid non-black pixels
-                    fill_start = max(0, start - black_count * step) if direction == 'left' else min(width - 1, start - black_count * step)
-                    fill_pixels = frame[y, fill_start:fill_start + sector_width * step:step]
-
-                    if direction == 'left':
-                        frame[y, start:sector_end] = fill_pixels[::-1]
-                    else:
-                        frame[y, sector_end:start:-1] = fill_pixels
-
-            x += step
-    return frame
-
 def inpaint_horizontal(frame, direction):
     """Inpaint missing areas in the frame horizontally.
     Args:
@@ -96,7 +54,45 @@ def inpaint_horizontal(frame, direction):
     Returns:
         Inpainted frame.
     """
-    return fill_sectors(frame, direction)
+    height, width, _ = frame.shape
+
+    for y in range(height):
+        x = 0 if direction == 'left' else width - 1
+        step = 1 if direction == 'left' else -1
+
+        last_non_black_segment = []
+        current_black_segment = []
+        longest_black_segment_length = 0
+
+        while 0 <= x < width:
+            if np.all(frame[y, x] == 0):  # Black pixel
+                current_black_segment.append(x)
+            else:  # Non-black pixel
+                if current_black_segment:
+                    # Check if the black segment ends here
+                    if len(current_black_segment) > longest_black_segment_length:
+                        # End the black sector
+                        start = current_black_segment[0]
+                        end = current_black_segment[-1]
+                        sector_width = end - start + 1
+
+                        # Ensure enough non-black pixels to repeat
+                        if len(last_non_black_segment) >= sector_width:
+                            for i, px in enumerate(range(start, end + 1)):
+                                frame[y, px] = last_non_black_segment[-sector_width + i]
+
+                    # Update the longest black segment length
+                    longest_black_segment_length = len(current_black_segment)
+                    current_black_segment = []
+
+                # Update the last non-black segment
+                last_non_black_segment.append(frame[y, x])
+                if len(last_non_black_segment) > longest_black_segment_length:
+                    last_non_black_segment.pop(0)
+
+            x += step
+
+    return frame
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
     """Process all frames to create stereoscopic video."""
