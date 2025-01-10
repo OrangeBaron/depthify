@@ -81,10 +81,11 @@ def identify_and_fill_sectors(frame, direction):
                     # Valid sector, fill it
                     sample_start = max(0, sector_start - sector_length) if direction == 'left' else min(width - 1, sector_end + sector_length)
                     sample = filled_frame[y, sample_start:sample_start + sector_length:step]
-                    for i in range(sector_length):
-                        fill_x = sector_start + i * step
-                        if 0 <= fill_x < width:
-                            filled_frame[y, fill_x] = sample[i % len(sample)]
+                    if len(sample) > 0:  # Ensure sample is not empty
+                        for i in range(sector_length):
+                            fill_x = sector_start + i * step
+                            if 0 <= fill_x < width:
+                                filled_frame[y, fill_x] = sample[i % len(sample)]
                 else:
                     # Skip the sector, not enough non-black pixels to validate
                     continue
