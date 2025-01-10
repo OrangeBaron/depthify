@@ -64,36 +64,28 @@ def inpaint_horizontal_sectors(frame, direction):
             if np.all(frame[y, x] == [0, 0, 0]):
                 sector_start = x
                 black_count = 0
-                non_black_count = 0
 
                 # Count consecutive black pixels
                 while 0 <= x < width and np.all(frame[y, x] == [0, 0, 0]):
                     black_count += 1
                     x += step
 
-                # Count consecutive non-black pixels
-                non_black_start = x
-                while 0 <= x < width and not np.all(frame[y, x] == [0, 0, 0]):
-                    non_black_count += 1
-                    x += step
+                # Determine the region to copy from
+                copy_start = sector_start - black_count * step if direction == 'left' else sector_start + black_count * step
+                copy_end = sector_start if direction == 'left' else sector_start + 1
 
-                # Determine if we can fill the sector
-                if black_count > 0 and non_black_count > black_count:
-                    sector_end = x - step * non_black_count
-                    sector_width = abs(sector_end - sector_start)
+                if 0 <= copy_start < width:
+                    fill_pixels = frame[y, copy_start:copy_end:step]
 
-                    # Determine copy region
-                    copy_start = sector_start - black_count * step if direction == 'left' else sector_start + black_count * step
-                    copy_end = sector_start if direction == 'left' else sector_start + 1
+                    # Repeat the pixels to fill the sector
+                    if len(fill_pixels) > 0:
+                        fill_pixels = np.tile(fill_pixels, (black_count, 1))[:black_count]
 
-                    if 0 <= copy_start < width:
-                        fill_pixels = frame[y, copy_start:copy_end:step][::step]
-                        fill_pixels = np.tile(fill_pixels, (sector_width, 1))[:sector_width]
-
+                        # Apply the filling
                         if direction == 'left':
-                            frame[y, sector_start:sector_start + sector_width] = fill_pixels
+                            frame[y, sector_start:sector_start + black_count] = fill_pixels
                         else:
-                            frame[y, sector_start - sector_width:sector_start] = fill_pixels[::-1]
+                            frame[y, sector_start - black_count:sector_start] = fill_pixels[::-1]
             else:
                 x += step
 
