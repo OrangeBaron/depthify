@@ -46,8 +46,20 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
+def fill_sector(frame, start_x, end_x, y):
+    """Fill a sector in the frame by repeating the last pixel to the left of the sector.
+    Args:
+        frame: The frame to modify.
+        start_x: Starting x-coordinate of the sector.
+        end_x: Ending x-coordinate of the sector.
+        y: Row index.
+    """
+    if start_x > 0:
+        fill_value = frame[y, start_x - 1]
+        frame[y, start_x:end_x + 1] = fill_value
+
 def inpaint_horizontal(frame, direction):
-    """Improved inpainting method to fill missing areas sector by sector.
+    """Inpaint missing areas in the frame horizontally by identifying and filling sectors.
     Args:
         frame: The frame with missing areas (holes).
         direction: Direction of inpainting ('left' or 'right').
@@ -56,48 +68,47 @@ def inpaint_horizontal(frame, direction):
     """
     height, width, _ = frame.shape
 
-    for y in range(height):
-        sector_start = None
-        sector_end = None
-        last_black_length = 0
-        x = 0 if direction == 'left' else width - 1
-        step = 1 if direction == 'left' else -1
+    if direction == 'left':
+        for y in range(height):
+            x = 0
+            while x < width:
+                if np.all(frame[y, x] == 0):
+                    # Start of a potential sector
+                    start_x = x
+                    while x < width and np.all(frame[y, x] == 0):
+                        x += 1
+                    # Check for termination condition: sequence of black pixels followed by non-black pixels
+                    if x < width:
+                        next_colored_x = x
+                        while next_colored_x < width and not np.all(frame[y, next_colored_x] == 0):
+                            next_colored_x += 1
+                        if next_colored_x - x > x - start_x:
+                            # Sector identified
+                            fill_sector(frame, start_x, x - 1, y)
+                        x = next_colored_x
+                else:
+                    x += 1
 
-        while 0 <= x < width:
-            if np.all(frame[y, x] == 0):
-                if sector_start is None:
-                    sector_start = x
-                sector_end = x
-                last_black_length += 1
-            else:
-                # Found a colored pixel, check for valid sector
-                if last_black_length > 0:
-                    color_series_length = 0
-                    temp_x = x
-
-                    while 0 <= temp_x < width and not np.all(frame[y, temp_x] == 0):
-                        color_series_length += 1
-                        temp_x += step
-
-                    if color_series_length > last_black_length:
-                        # Valid sector found
-                        if sector_start is not None and sector_end is not None:
-                            fill_start = sector_start - step
-                            if 0 <= fill_start < width:
-                                fill_color = frame[y, fill_start]
-                                for fill_x in range(sector_start, sector_end + 1):
-                                    frame[y, fill_x] = fill_color
-                        # Reset for the next sector
-                        sector_start = None
-                        sector_end = None
-                        last_black_length = 0
-                        x = temp_x - step  # Move to end of color series
-                    else:
-                        # Skip the sector
-                        sector_start = None
-                        sector_end = None
-                        last_black_length = 0
-            x += step
+    elif direction == 'right':
+        for y in range(height):
+            x = width - 1
+            while x >= 0:
+                if np.all(frame[y, x] == 0):
+                    # Start of a potential sector
+                    end_x = x
+                    while x >= 0 and np.all(frame[y, x] == 0):
+                        x -= 1
+                    # Check for termination condition: sequence of black pixels followed by non-black pixels
+                    if x >= 0:
+                        prev_colored_x = x
+                        while prev_colored_x >= 0 and not np.all(frame[y, prev_colored_x] == 0):
+                            prev_colored_x -= 1
+                        if end_x - x > x - prev_colored_x:
+                            # Sector identified
+                            fill_sector(frame, x + 1, end_x, y)
+                        x = prev_colored_x
+                else:
+                    x -= 1
 
     return frame
 
