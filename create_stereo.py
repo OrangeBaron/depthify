@@ -67,7 +67,8 @@ def inpaint_horizontal(frame, direction):
                     hole_end = x
                     hole_width = hole_end - hole_start
                     for i in range(hole_width):
-                        frame[y, hole_start + i] = frame[y, hole_start - 1 - i]
+                        if hole_start - 1 - i >= 0:  # Ensure we don't go out of bounds
+                            frame[y, hole_start + i] = frame[y, hole_start - 1 - i]
                     hole_start = None
     elif direction == 'right':
         for y in range(frame.shape[0]):
@@ -80,7 +81,8 @@ def inpaint_horizontal(frame, direction):
                     hole_start = x
                     hole_width = hole_end - hole_start
                     for i in range(hole_width):
-                        frame[y, hole_end - i] = frame[y, hole_end + 1 + i]
+                        if hole_end + 1 + i < frame.shape[1]:  # Ensure we don't go out of bounds
+                            frame[y, hole_end - i] = frame[y, hole_end + 1 + i]
                     hole_end = None
 
     return frame
