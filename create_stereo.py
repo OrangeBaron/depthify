@@ -46,48 +46,26 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def inpaint_horizontal_advanced(frame, direction):
-    """Inpaint missing areas in the frame horizontally using advanced sector-based filling.
+def inpaint_horizontal(frame, direction):
+    """Inpaint missing areas in the frame horizontally.
     Args:
         frame: The frame with missing areas (holes).
         direction: Direction of inpainting ('left' or 'right').
     Returns:
         Inpainted frame.
     """
-    height, width, _ = frame.shape
+    mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
 
-    for y in range(height):
-        x = 0 if direction == 'left' else width - 1
-        step = 1 if direction == 'left' else -1
-
-        while 0 <= x < width:
-            if np.all(frame[y, x] == 0):  # Start of a black sector
-                sector_start = x
-
-                # Count black pixels
-                black_count = 0
-                while 0 <= x < width and np.all(frame[y, x] == 0):
-                    black_count += 1
-                    x += step
-
-                # Count valid (non-black) pixels
-                valid_start = x
-                valid_count = 0
-                while 0 <= x < width and not np.all(frame[y, x] == 0):
-                    valid_count += 1
-                    x += step
-
-                if valid_count >= black_count:  # End of sector
-                    sector_end = sector_start + black_count * step
-
-                    if 0 <= sector_start < width and 0 <= sector_end < width:
-                        # Fill the sector with the last valid pixels before the sector start
-                        fill_values = frame[y, valid_start - step:valid_start - step - black_count * step:-step]
-                        if fill_values.shape[0] == black_count:
-                            for i in range(black_count):
-                                frame[y, sector_start + i * step] = fill_values[i]
-            else:
-                x += step
+    if direction == 'left':
+        for y in range(frame.shape[0]):
+            for x in range(1, frame.shape[1]):
+                if mask[y, x]:
+                    frame[y, x] = frame[y, x - 1]  # Fill from the left
+    elif direction == 'right':
+        for y in range(frame.shape[0]):
+            for x in range(frame.shape[1] - 2, -1, -1):
+                if mask[y, x]:
+                    frame[y, x] = frame[y, x + 1]  # Fill from the right
 
     return frame
 
@@ -112,9 +90,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Inpaint missing areas using advanced method
-        left_frame = inpaint_horizontal_advanced(left_frame, direction='left')
-        right_frame = inpaint_horizontal_advanced(right_frame, direction='right')
+        # Inpaint missing areas
+        left_frame = inpaint_horizontal(left_frame, direction='left')
+        right_frame = inpaint_horizontal(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
