@@ -46,33 +46,50 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def inpaint_horizontal(frame, direction, layers):
-    """Inpaint missing areas in the frame horizontally using the mean of last `layers` pixels.
+def inpaint_macro_holes(frame, direction):
+    """Inpaint missing areas (macro holes) in the frame horizontally.
     Args:
         frame: The frame with missing areas (holes).
         direction: Direction of inpainting ('left' or 'right').
-        layers: Number of pixels to consider for the mean.
     Returns:
         Inpainted frame.
     """
-    mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
+    height, width, _ = frame.shape
 
-    if direction == 'left':
-        for y in range(frame.shape[0]):
-            for x in range(frame.shape[1]):
-                if mask[y, x]:
-                    start = max(0, x - layers)
-                    available_pixels = frame[y, start:x]
-                    if available_pixels.size > 0:
-                        frame[y, x] = np.mean(available_pixels, axis=0).astype(np.uint8)
-    elif direction == 'right':
-        for y in range(frame.shape[0]):
-            for x in range(frame.shape[1] - 1, -1, -1):
-                if mask[y, x]:
-                    end = min(frame.shape[1], x + layers + 1)
-                    available_pixels = frame[y, x + 1:end]
-                    if available_pixels.size > 0:
-                        frame[y, x] = np.mean(available_pixels, axis=0).astype(np.uint8)
+    for y in range(height):
+        x = 0 if direction == 'left' else width - 1
+        step = 1 if direction == 'left' else -1
+
+        while 0 <= x < width:
+            if np.all(frame[y, x] == 0):  # Found a hole
+                # Start tracking macro hole
+                hole_start = x
+                valid_series_length = 0
+                hole_length = 0
+
+                while 0 <= x < width and np.all(frame[y, x] == 0):
+                    hole_length += 1
+                    x += step
+
+                while 0 <= x < width and not np.all(frame[y, x] == 0):
+                    valid_series_length += 1
+                    x += step
+
+                if valid_series_length > hole_length:
+                    # Define macro hole boundaries
+                    macro_hole_end = hole_start + hole_length * step
+                    macro_hole_start = hole_start
+
+                    # Ensure valid range for copying
+                    valid_start = macro_hole_start - valid_series_length * step
+                    if valid_start < 0 or valid_start >= width:
+                        continue
+
+                    # Fill macro hole with the last valid series
+                    for i in range(abs(hole_length)):
+                        frame[y, macro_hole_start + i * step] = frame[y, valid_start + i * step]
+
+            x += step
 
     return frame
 
@@ -97,9 +114,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Inpaint missing areas
-        left_frame = inpaint_horizontal(left_frame, direction='left', layers=layers)
-        right_frame = inpaint_horizontal(right_frame, direction='right', layers=layers)
+        # Inpaint missing areas using macro-hole logic
+        left_frame = inpaint_macro_holes(left_frame, direction='left')
+        right_frame = inpaint_macro_holes(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
