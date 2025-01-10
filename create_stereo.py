@@ -88,8 +88,8 @@ def inpaint_horizontal(frame, direction):
                         frame[y, sector_start:x + 1] = [0, 0, 255]  # Fill with blue
                         in_sector = False
                     else:
-                        # Extend the sector but do not consider the new pixels as black
-                        last_black_length += non_black_length
+                        # Extend the sector
+                        last_black_length = 0
                         x = nx - (1 if direction == 'left' else -1)  # Update the current position
 
     return frame
