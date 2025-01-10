@@ -46,8 +46,8 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def inpaint_horizontal(frame, direction):
-    """Inpaint missing areas in the frame horizontally.
+def inpaint_horizontal_advanced(frame, direction):
+    """Inpaint missing areas in the frame horizontally using advanced sector-based filling.
     Args:
         frame: The frame with missing areas (holes).
         direction: Direction of inpainting ('left' or 'right').
@@ -58,36 +58,36 @@ def inpaint_horizontal(frame, direction):
 
     for y in range(height):
         x = 0 if direction == 'left' else width - 1
-        while (0 <= x < width):
-            # Find start of a black pixel sector
-            if np.all(frame[y, x] == [0, 0, 0]):
+        step = 1 if direction == 'left' else -1
+
+        while 0 <= x < width:
+            if np.all(frame[y, x] == 0):  # Start of a black sector
                 sector_start = x
 
-                # Count length of black pixel sector
-                while (0 <= x < width) and np.all(frame[y, x] == [0, 0, 0]):
-                    x += 1 if direction == 'left' else -1
-                sector_end = x - 1 if direction == 'left' else x + 1
+                # Count black pixels
+                black_count = 0
+                while 0 <= x < width and np.all(frame[y, x] == 0):
+                    black_count += 1
+                    x += step
 
-                # Count length of the following non-black pixel sector
-                non_black_start = x
-                while (0 <= x < width) and not np.all(frame[y, x] == [0, 0, 0]):
-                    x += 1 if direction == 'left' else -1
-                non_black_end = x - 1 if direction == 'left' else x + 1
+                # Count valid (non-black) pixels
+                valid_start = x
+                valid_count = 0
+                while 0 <= x < width and not np.all(frame[y, x] == 0):
+                    valid_count += 1
+                    x += step
 
-                black_length = abs(sector_end - sector_start) + 1
-                non_black_length = abs(non_black_end - non_black_start) + 1
+                if valid_count >= black_count:  # End of sector
+                    sector_end = sector_start + black_count * step
 
-                # If the non-black sector is longer, fill the black sector
-                if non_black_length > black_length:
-                    if direction == 'left':
-                        fill_values = frame[y, max(0, sector_start - black_length):sector_start]
-                    else:
-                        fill_values = frame[y, sector_start + 1:sector_start + 1 + black_length]
-
-                    if len(fill_values) == black_length:
-                        frame[y, sector_start:sector_start + black_length] = fill_values[::-1] if direction == 'right' else fill_values
+                    if 0 <= sector_start < width and 0 <= sector_end < width:
+                        # Fill the sector with the last valid pixels before the sector start
+                        fill_values = frame[y, valid_start - step:valid_start - step - black_count * step:-step]
+                        if fill_values.shape[0] == black_count:
+                            for i in range(black_count):
+                                frame[y, sector_start + i * step] = fill_values[i]
             else:
-                x += 1 if direction == 'left' else -1
+                x += step
 
     return frame
 
@@ -112,9 +112,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Inpaint missing areas
-        left_frame = inpaint_horizontal(left_frame, direction='left')
-        right_frame = inpaint_horizontal(right_frame, direction='right')
+        # Inpaint missing areas using advanced method
+        left_frame = inpaint_horizontal_advanced(left_frame, direction='left')
+        right_frame = inpaint_horizontal_advanced(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
