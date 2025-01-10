@@ -46,39 +46,49 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def identify_and_fill_sectors(frame, direction):
-    """Identify and fill sectors (regions) of black pixels for inpainting.
+def inpaint_horizontal_with_sectors(frame, direction):
+    """Inpaint missing areas in the frame horizontally using sector identification.
     Args:
-        frame: The frame to process.
-        direction: Direction of inpainting ('left' for left eye, 'right' for right eye).
+        frame: The frame with missing areas (holes).
+        direction: Direction of inpainting ('left' or 'right').
     Returns:
-        Frame with sectors filled with blue (0, 0, 255).
+        Inpainted frame with sectors filled.
     """
     height, width, _ = frame.shape
+    mask = np.all(frame == [0, 0, 0], axis=2)  # Find holes (where all RGB values are 0)
+
     for y in range(height):
-        sector_start = -1
-        for x in (range(width) if direction == 'left' else range(width - 1, -1, -1)):
-            if np.all(frame[y, x] == [0, 0, 0]):  # Black pixel
-                if sector_start == -1:
-                    sector_start = x  # Start a new sector
-            else:  # Colored pixel
-                if sector_start != -1:  # Inside a sector
-                    # Check if the sector should end here
-                    consecutive_colored = 0
-                    consecutive_black = 0
-                    scan_range = range(x, width) if direction == 'left' else range(x, -1, -1)
-                    for scan_x in scan_range:
-                        if np.all(frame[y, scan_x] == [0, 0, 0]):
-                            consecutive_black += 1
-                            break
+        in_sector = False
+        black_count = 0
+        start_idx = None
+
+        if direction == 'left':
+            iterator = range(width)
+        elif direction == 'right':
+            iterator = range(width - 1, -1, -1)
+
+        for x in iterator:
+            if mask[y, x]:  # Current pixel is black
+                if not in_sector:
+                    in_sector = True
+                    start_idx = x
+                black_count += 1
+            else:  # Current pixel is not black
+                if in_sector:
+                    non_black_count = 1
+                    for x_next in iterator:
+                        if not mask[y, x_next]:
+                            non_black_count += 1
                         else:
-                            consecutive_colored += 1
-                    
-                    if consecutive_colored > consecutive_black:  # End the sector
-                        frame[y, sector_start:x + 1] = [0, 0, 255]  # Fill sector with blue
-                        sector_start = -1  # Reset sector
+                            break
+                    if non_black_count > black_count:
+                        # Close the sector without including the non-black pixels
+                        end_idx = x - 1 if direction == 'left' else x + 1
+                        frame[y, start_idx:end_idx + 1 if direction == 'left' else end_idx - 1:-1] = [0, 0, 255]
+                        in_sector = False
                     else:
-                        continue  # Continue the sector
+                        black_count = 0  # Continue the sector
+
     return frame
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
@@ -102,9 +112,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Identify and fill sectors
-        left_frame = identify_and_fill_sectors(left_frame, direction='left')
-        right_frame = identify_and_fill_sectors(right_frame, direction='right')
+        # Inpaint missing areas using sectors
+        left_frame = inpaint_horizontal_with_sectors(left_frame, direction='left')
+        right_frame = inpaint_horizontal_with_sectors(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
