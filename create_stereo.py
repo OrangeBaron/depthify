@@ -47,7 +47,7 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
     return parallax_frame
 
 def inpaint_horizontal(frame, direction):
-    """Inpaint missing areas in the frame horizontally.
+    """Inpaint missing areas in the frame horizontally by creating sectors.
     Args:
         frame: The frame with missing areas (holes).
         direction: Direction of inpainting ('left' or 'right').
@@ -57,9 +57,8 @@ def inpaint_horizontal(frame, direction):
     height, width, _ = frame.shape
 
     for y in range(height):
-        in_sector = False
-        sector_start = -1
-        sector_close = -1
+        sector_open = False
+        x_start = 0
 
         if direction == 'left':
             x_range = range(width)
@@ -67,34 +66,30 @@ def inpaint_horizontal(frame, direction):
             x_range = range(width - 1, -1, -1)
 
         for x in x_range:
-            is_black = np.all(frame[y, x] == [0, 0, 0])
+            if np.all(frame[y, x] == [0, 0, 0]):  # Black pixel
+                if not sector_open:
+                    sector_open = True
+                    x_start = x
+            elif sector_open:  # Non-black pixel while a sector is open
+                # Check for closure conditions
+                non_black_streak_length = 0
 
-            if is_black:
-                if not in_sector:
-                    # Start a new sector
-                    in_sector = True
-                    sector_start = x
-                sector_close = x
-            else:
-                if in_sector:
-                    # Check the non-black streak against the sector
-                    non_black_streak = 1
-                    while (x + 1 in x_range and
-                           not np.all(frame[y, x + 1] == [0, 0, 0])):
-                        x += 1
-                        non_black_streak += 1
-
-                    if non_black_streak > (sector_close - sector_start + 1):
-                        # Close the sector
-                        frame[y, sector_start:sector_close + 1] = [0, 0, 255]  # Fill sector with blue
-                        in_sector = False
+                for nx in x_range:
+                    if nx == x:
+                        continue
+                    if not np.all(frame[y, nx] == [0, 0, 0]):
+                        non_black_streak_length += 1
                     else:
-                        # Extend the sector to include the non-black streak
-                        sector_close = x
+                        break
 
-        # If a sector remains open at the end of the row, close it
-        if in_sector:
-            frame[y, sector_start:sector_close + 1] = [0, 0, 255]  # Fill sector with blue
+                if non_black_streak_length > (x - x_start):
+                    # Close the sector
+                    frame[y, x_start:x] = [0, 0, 255]  # Fill sector with blue
+                    sector_open = False
+
+        # Close any open sector at the end of the row
+        if sector_open:
+            frame[y, x_start:] = [0, 0, 255]  # Fill remaining sector with blue
 
     return frame
 
