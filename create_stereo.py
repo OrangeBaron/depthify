@@ -55,46 +55,46 @@ def inpaint_horizontal(frame, direction):
         Inpainted frame.
     """
     height, width, _ = frame.shape
+
     for y in range(height):
         in_sector = False
-        sector_start = None
-        sector_close = None
+        sector_start = -1
+        sector_close = -1
 
-        x_range = range(width) if direction == 'left' else range(width - 1, -1, -1)
+        if direction == 'left':
+            x_range = range(width)
+        elif direction == 'right':
+            x_range = range(width - 1, -1, -1)
 
         for x in x_range:
-            current_pixel = frame[y, x]
-            is_black = np.all(current_pixel == [0, 0, 0])
+            is_black = np.all(frame[y, x] == [0, 0, 0])
 
             if is_black:
                 if not in_sector:
                     # Start a new sector
                     in_sector = True
                     sector_start = x
-                    sector_close = x
-                else:
-                    # Extend the sector
-                    sector_close = x
+                sector_close = x
             else:
                 if in_sector:
-                    # Non-black pixel encountered inside a sector
-                    non_black_start = x
-                    while x in x_range and np.all(frame[y, x] != [0, 0, 0]):
+                    # Check the non-black streak against the sector
+                    non_black_streak = 1
+                    while (x + 1 in x_range and
+                           not np.all(frame[y, x + 1] == [0, 0, 0])):
                         x += 1
-                    non_black_length = x - non_black_start
+                        non_black_streak += 1
 
-                    if non_black_length > (sector_close - sector_start + 1):
+                    if non_black_streak > (sector_close - sector_start + 1):
                         # Close the sector
-                        frame[y, sector_start:sector_close + 1] = [0, 0, 255]  # Fill with blue
+                        frame[y, sector_start:sector_close + 1] = [0, 0, 255]  # Fill sector with blue
                         in_sector = False
                     else:
-                        # Extend the sector
+                        # Extend the sector to include the non-black streak
                         sector_close = x
-                        continue
 
+        # If a sector remains open at the end of the row, close it
         if in_sector:
-            # Finalize any open sector at the end of the row
-            frame[y, sector_start:sector_close + 1] = [0, 0, 255]
+            frame[y, sector_start:sector_close + 1] = [0, 0, 255]  # Fill sector with blue
 
     return frame
 
