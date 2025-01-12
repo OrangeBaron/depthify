@@ -46,61 +46,27 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def create_occlusion_mask(frame, direction):
-    """Create an occlusion mask for the frame based on black pixels and consecutive pixel sequences.
+def inpaint_horizontal(frame, direction):
+    """Inpaint missing areas in the frame horizontally.
     Args:
-        frame: The frame to analyze.
-        direction: The direction to process ('left' or 'right').
+        frame: The frame with missing areas (holes).
+        direction: Direction of inpainting ('left' or 'right').
     Returns:
-        A mask indicating the occluded regions.
+        Inpainted frame.
     """
-    height, width, _ = frame.shape
-    mask = np.zeros((height, width), dtype=np.uint8)
+    mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
 
-    for y in range(height):
-        black_streak_length = 0
-        if direction == 'left':
-            for x in range(width):
-                if np.all(frame[y, x] == [0, 0, 0]):
-                    black_streak_length += 1
-                    mask[y, x] = 255
-                elif black_streak_length > 0:
-                    non_black_streak_length = 0
-                    for x2 in range(x, width):
-                        if np.all(frame[y, x2] != [0, 0, 0]):
-                            non_black_streak_length += 1
-                        else:
-                            break
-                    if non_black_streak_length <= black_streak_length:
-                        mask[y, x:x + non_black_streak_length] = 255
-                    black_streak_length = 0
-        elif direction == 'right':
-            for x in range(width - 1, -1, -1):
-                if np.all(frame[y, x] == [0, 0, 0]):
-                    black_streak_length += 1
-                    mask[y, x] = 255
-                elif black_streak_length > 0:
-                    non_black_streak_length = 0
-                    for x2 in range(x, -1, -1):
-                        if np.all(frame[y, x2] != [0, 0, 0]):
-                            non_black_streak_length += 1
-                        else:
-                            break
-                    if non_black_streak_length <= black_streak_length:
-                        mask[y, x - non_black_streak_length:x] = 255
-                    black_streak_length = 0
+    if direction == 'left':
+        for y in range(frame.shape[0]):
+            for x in range(1, frame.shape[1]):
+                if mask[y, x]:
+                    frame[y, x] = frame[y, x - 1]  # Fill from the left
+    elif direction == 'right':
+        for y in range(frame.shape[0]):
+            for x in range(frame.shape[1] - 2, -1, -1):
+                if mask[y, x]:
+                    frame[y, x] = frame[y, x + 1]  # Fill from the right
 
-    return mask
-
-def inpaint_test(frame, mask):
-    """Paint occluded regions in the mask with blue for testing.
-    Args:
-        frame: The frame to modify.
-        mask: The occlusion mask.
-    Returns:
-        Frame with occluded regions painted blue.
-    """
-    frame[mask == 255] = [255, 0, 0]  # Paint occluded areas blue
     return frame
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
@@ -124,13 +90,9 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Create occlusion masks
-        left_mask = create_occlusion_mask(left_frame, direction='left')
-        right_mask = create_occlusion_mask(right_frame, direction='right')
-
-        # Paint occluded regions for testing
-        left_frame = inpaint_test(left_frame, left_mask)
-        right_frame = inpaint_test(right_frame, right_mask)
+        # Inpaint missing areas
+        """left_frame = inpaint_horizontal(left_frame, direction='left')
+        right_frame = inpaint_horizontal(right_frame, direction='right')"""
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
