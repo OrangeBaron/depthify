@@ -56,16 +56,41 @@ def inpaint_horizontal(frame, direction):
     """
     mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
 
+    height, width, _ = frame.shape
+
     if direction == 'left':
-        for y in range(frame.shape[0]):
-            for x in range(1, frame.shape[1]):
+        for y in range(height):
+            last_valid = None
+            for x in range(width):
                 if mask[y, x]:
-                    frame[y, x] = frame[y, x - 1]  # Fill from the left
+                    if last_valid is not None:
+                        hole_size = 1
+                        while x + hole_size < width and mask[y, x + hole_size]:
+                            hole_size += 1
+                        if last_valid[1] + hole_size <= width:
+                            frame[y, x:x + hole_size] = frame[y, last_valid[1] - hole_size:last_valid[1]]
+                            x += hole_size - 1
+                    else:
+                        break
+                else:
+                    last_valid = (y, x)
+
     elif direction == 'right':
-        for y in range(frame.shape[0]):
-            for x in range(frame.shape[1] - 2, -1, -1):
+        for y in range(height):
+            last_valid = None
+            for x in range(width - 1, -1, -1):
                 if mask[y, x]:
-                    frame[y, x] = frame[y, x + 1]  # Fill from the right
+                    if last_valid is not None:
+                        hole_size = 1
+                        while x - hole_size >= 0 and mask[y, x - hole_size]:
+                            hole_size += 1
+                        if last_valid[1] - hole_size >= 0:
+                            frame[y, x - hole_size + 1:x + 1] = frame[y, last_valid[1]:last_valid[1] + hole_size]
+                            x -= hole_size - 1
+                    else:
+                        break
+                else:
+                    last_valid = (y, x)
 
     return frame
 
@@ -91,8 +116,8 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
         # Inpaint missing areas
-        """left_frame = inpaint_horizontal(left_frame, direction='left')
-        right_frame = inpaint_horizontal(right_frame, direction='right')"""
+        left_frame = inpaint_horizontal(left_frame, direction='left')
+        right_frame = inpaint_horizontal(right_frame, direction='right')
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
