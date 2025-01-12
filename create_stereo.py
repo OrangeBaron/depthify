@@ -54,44 +54,51 @@ def inpaint_horizontal(frame, direction):
     Returns:
         Inpainted frame.
     """
-    mask = np.all(frame == 0, axis=2)  # Find holes (where all RGB values are 0)
-
     height, width, _ = frame.shape
+    for y in range(height):
+        row = frame[y]
+        if direction == 'left':
+            last_valid_segment = None
+            x = 0
+            while x < width:
+                # Find the start of a black segment
+                if np.all(row[x] == [0, 0, 0]):
+                    start = x
+                    while x < width and np.all(row[x] == [0, 0, 0]):
+                        x += 1
+                    end = x  # End of the black segment
 
-    if direction == 'left':
-        for y in range(height):
-            last_valid = None
-            for x in range(width):
-                if mask[y, x]:
-                    if last_valid is not None:
-                        hole_size = 1
-                        while x + hole_size < width and mask[y, x + hole_size]:
-                            hole_size += 1
-                        if last_valid[1] + hole_size <= width:
-                            frame[y, x:x + hole_size] = frame[y, last_valid[1] - hole_size:last_valid[1]]
-                            x += hole_size - 1
-                    else:
-                        break
+                    # Inpaint the segment if possible
+                    if last_valid_segment is not None and (end - start) <= len(last_valid_segment):
+                        row[start:end] = last_valid_segment[:end - start]
                 else:
-                    last_valid = (y, x)
+                    # Update the last valid segment
+                    segment_start = x
+                    while x < width and not np.all(row[x] == [0, 0, 0]):
+                        x += 1
+                    segment_end = x
+                    last_valid_segment = row[segment_start:segment_end]
+        elif direction == 'right':
+            last_valid_segment = None
+            x = width - 1
+            while x >= 0:
+                # Find the start of a black segment
+                if np.all(row[x] == [0, 0, 0]):
+                    end = x
+                    while x >= 0 and np.all(row[x] == [0, 0, 0]):
+                        x -= 1
+                    start = x  # Start of the black segment
 
-    elif direction == 'right':
-        for y in range(height):
-            last_valid = None
-            for x in range(width - 1, -1, -1):
-                if mask[y, x]:
-                    if last_valid is not None:
-                        hole_size = 1
-                        while x - hole_size >= 0 and mask[y, x - hole_size]:
-                            hole_size += 1
-                        if last_valid[1] - hole_size >= 0:
-                            frame[y, x - hole_size + 1:x + 1] = frame[y, last_valid[1]:last_valid[1] + hole_size]
-                            x -= hole_size - 1
-                    else:
-                        break
+                    # Inpaint the segment if possible
+                    if last_valid_segment is not None and (end - start) <= len(last_valid_segment):
+                        row[start + 1:end + 1] = last_valid_segment[-(end - start):]
                 else:
-                    last_valid = (y, x)
-
+                    # Update the last valid segment
+                    segment_end = x
+                    while x >= 0 and not np.all(row[x] == [0, 0, 0]):
+                        x -= 1
+                    segment_start = x
+                    last_valid_segment = row[segment_start + 1:segment_end + 1]
     return frame
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
