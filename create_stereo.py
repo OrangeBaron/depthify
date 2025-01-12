@@ -46,51 +46,64 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def inpaint_horizontal(frame, direction):
-    """Inpaint missing areas in the frame horizontally by creating sectors.
+def generate_occlusion_mask(frame, direction):
+    """Generate a mask for occluded areas based on the described logic.
     Args:
-        frame: The frame with missing areas (holes).
-        direction: Direction of inpainting ('left' or 'right').
+        frame: The input frame (left or right eye).
+        direction: Direction to process ('left' or 'right').
     Returns:
-        Inpainted frame.
+        Mask with occluded areas set to True.
     """
     height, width, _ = frame.shape
+    mask = np.zeros((height, width), dtype=bool)
 
     for y in range(height):
-        sector_open = False
-        x_start = 0
-
         if direction == 'left':
-            x_range = range(width)
+            last_black_length = 0
+            for x in range(width):
+                if np.all(frame[y, x] == [0, 0, 0]):
+                    last_black_length += 1
+                else:
+                    non_black_start = x
+                    non_black_length = 0
+                    while non_black_start < width and not np.all(frame[y, non_black_start] == [0, 0, 0]):
+                        non_black_length += 1
+                        non_black_start += 1
+
+                    if non_black_length <= last_black_length:
+                        mask[y, x:x+non_black_length] = True
+
+                    x += non_black_length - 1
+                    last_black_length = 0
         elif direction == 'right':
-            x_range = range(width - 1, -1, -1)
+            last_black_length = 0
+            for x in range(width - 1, -1, -1):
+                if np.all(frame[y, x] == [0, 0, 0]):
+                    last_black_length += 1
+                else:
+                    non_black_start = x
+                    non_black_length = 0
+                    while non_black_start >= 0 and not np.all(frame[y, non_black_start] == [0, 0, 0]):
+                        non_black_length += 1
+                        non_black_start -= 1
 
-        for x in x_range:
-            if np.all(frame[y, x] == [0, 0, 0]):  # Black pixel
-                if not sector_open:
-                    sector_open = True
-                    x_start = x
-            elif sector_open:  # Non-black pixel while a sector is open
-                # Check for closure conditions
-                non_black_streak_length = 0
+                    if non_black_length <= last_black_length:
+                        mask[y, x-non_black_length+1:x+1] = True
 
-                for nx in x_range:
-                    if nx == x:
-                        continue
-                    if not np.all(frame[y, nx] == [0, 0, 0]):
-                        non_black_streak_length += 1
-                    else:
-                        break
+                    x -= non_black_length - 1
+                    last_black_length = 0
 
-                if non_black_streak_length > (x - x_start):
-                    # Close the sector
-                    frame[y, x_start:x] = [0, 0, 255]  # Fill sector with blue
-                    sector_open = False
+    return mask
 
-        # Close any open sector at the end of the row
-        if sector_open:
-            frame[y, x_start:] = [0, 0, 255]  # Fill remaining sector with blue
-
+def inpaint_test(frame, mask):
+    """Apply a test inpainting by filling occluded areas with blue.
+    Args:
+        frame: The input frame.
+        mask: The occlusion mask.
+    Returns:
+        Frame with occluded areas painted blue.
+    """
+    frame[mask] = [255, 0, 0]  # Fill occluded areas with blue
     return frame
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
@@ -114,9 +127,13 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Inpaint missing areas
-        left_frame = inpaint_horizontal(left_frame, direction='left')
-        right_frame = inpaint_horizontal(right_frame, direction='right')
+        # Generate occlusion masks
+        left_mask = generate_occlusion_mask(left_frame, direction='left')
+        right_mask = generate_occlusion_mask(right_frame, direction='right')
+
+        # Apply test inpainting
+        left_frame = inpaint_test(left_frame, left_mask)
+        right_frame = inpaint_test(right_frame, right_mask)
 
         # Combine frames side-by-side
         side_by_side_frame = np.hstack((left_frame, right_frame))
