@@ -46,64 +46,61 @@ def create_parallax_frame(rgb_frame, depth_map, layers, factor):
 
     return parallax_frame
 
-def generate_occlusion_mask(frame, direction):
-    """Generate a mask for occluded areas based on the described logic.
+def create_occlusion_mask(frame, direction):
+    """Create an occlusion mask for the frame based on black pixels and consecutive pixel sequences.
     Args:
-        frame: The input frame (left or right eye).
-        direction: Direction to process ('left' or 'right').
+        frame: The frame to analyze.
+        direction: The direction to process ('left' or 'right').
     Returns:
-        Mask with occluded areas set to True.
+        A mask indicating the occluded regions.
     """
     height, width, _ = frame.shape
-    mask = np.zeros((height, width), dtype=bool)
+    mask = np.zeros((height, width), dtype=np.uint8)
 
     for y in range(height):
+        black_streak_length = 0
         if direction == 'left':
-            last_black_length = 0
             for x in range(width):
                 if np.all(frame[y, x] == [0, 0, 0]):
-                    last_black_length += 1
-                else:
-                    non_black_start = x
-                    non_black_length = 0
-                    while non_black_start < width and not np.all(frame[y, non_black_start] == [0, 0, 0]):
-                        non_black_length += 1
-                        non_black_start += 1
-
-                    if non_black_length <= last_black_length:
-                        mask[y, x:x+non_black_length] = True
-
-                    x += non_black_length - 1
-                    last_black_length = 0
+                    black_streak_length += 1
+                    mask[y, x] = 255
+                elif black_streak_length > 0:
+                    non_black_streak_length = 0
+                    for x2 in range(x, width):
+                        if np.all(frame[y, x2] != [0, 0, 0]):
+                            non_black_streak_length += 1
+                        else:
+                            break
+                    if non_black_streak_length <= black_streak_length:
+                        mask[y, x:x + non_black_streak_length] = 255
+                    black_streak_length = 0
         elif direction == 'right':
-            last_black_length = 0
             for x in range(width - 1, -1, -1):
                 if np.all(frame[y, x] == [0, 0, 0]):
-                    last_black_length += 1
-                else:
-                    non_black_start = x
-                    non_black_length = 0
-                    while non_black_start >= 0 and not np.all(frame[y, non_black_start] == [0, 0, 0]):
-                        non_black_length += 1
-                        non_black_start -= 1
-
-                    if non_black_length <= last_black_length:
-                        mask[y, x-non_black_length+1:x+1] = True
-
-                    x -= non_black_length - 1
-                    last_black_length = 0
+                    black_streak_length += 1
+                    mask[y, x] = 255
+                elif black_streak_length > 0:
+                    non_black_streak_length = 0
+                    for x2 in range(x, -1, -1):
+                        if np.all(frame[y, x2] != [0, 0, 0]):
+                            non_black_streak_length += 1
+                        else:
+                            break
+                    if non_black_streak_length <= black_streak_length:
+                        mask[y, x - non_black_streak_length:x] = 255
+                    black_streak_length = 0
 
     return mask
 
 def inpaint_test(frame, mask):
-    """Apply a test inpainting by filling occluded areas with blue.
+    """Paint occluded regions in the mask with blue for testing.
     Args:
-        frame: The input frame.
+        frame: The frame to modify.
         mask: The occlusion mask.
     Returns:
-        Frame with occluded areas painted blue.
+        Frame with occluded regions painted blue.
     """
-    frame[mask] = [255, 0, 0]  # Fill occluded areas with blue
+    frame[mask == 255] = [255, 0, 0]  # Paint occluded areas blue
     return frame
 
 def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
@@ -127,11 +124,11 @@ def process_frames(rgb_dir, depth_dir, output_dir, layers, factor):
         left_frame = create_parallax_frame(rgb_frame, depth_map, layers, factor)
         right_frame = create_parallax_frame(rgb_frame, depth_map, layers, -factor)
 
-        # Generate occlusion masks
-        left_mask = generate_occlusion_mask(left_frame, direction='left')
-        right_mask = generate_occlusion_mask(right_frame, direction='right')
+        # Create occlusion masks
+        left_mask = create_occlusion_mask(left_frame, direction='left')
+        right_mask = create_occlusion_mask(right_frame, direction='right')
 
-        # Apply test inpainting
+        # Paint occluded regions for testing
         left_frame = inpaint_test(left_frame, left_mask)
         right_frame = inpaint_test(right_frame, right_mask)
 
